@@ -4,10 +4,13 @@ The `tpf` CLI verifies and deploys immutable TPF Releases. Maven and future buil
 `pipeline-release.json`; this repository consumes it without rebuilding or rewriting it.
 
 ```bash
-tpf release verify --release pipeline-release.json
-tpf deploy local --release pipeline-release.json
-tpf deploy staging --release pipeline-release.json
+tpf release verify
+tpf deploy local
+tpf deploy staging
 ```
+
+By default, `tpf` looks for `./pipeline-release.json` or `./target/pipeline-release.json`.
+If both exist, specify the intended file with `--release`.
 
 Deployment configuration belongs in `tpf-deploy.yaml`. Release identity, artifact URIs and digests remain identical
 when the same descriptor is promoted between environments.
@@ -15,7 +18,7 @@ when the same descriptor is promoted between environments.
 Build with Java 21:
 
 ```bash
-./mvnw verify -Dmaven.repo.local="$PWD/.m2/repository"
+./mvnw verify
 ```
 
 The `tpf-cli` module produces an executable `-all.jar` and ZIP/TAR distributions containing POSIX and Windows
@@ -25,6 +28,5 @@ The ordinary test suite has no container dependency. Run the real OCI registry c
 machine with Podman:
 
 ```bash
-TPF_RUN_PODMAN_OCI_TEST=true ./mvnw -pl tpf-release-resolver test \
-  -Dmaven.repo.local="$PWD/.m2/repository"
+TPF_RUN_PODMAN_OCI_TEST=true ./mvnw -pl tpf-release-resolver test
 ```
