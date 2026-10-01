@@ -2,6 +2,7 @@ package org.pipelineframework.deployment.target.local;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -9,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.pipelineframework.deployment.api.DeploymentException;
@@ -76,6 +78,60 @@ class LocalProcessTargetTest {
             Thread.sleep(50L);
         }
         assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+    }
+
+    @Test
+    void terminatesStartedProcessesWhenLaterMaterializationIsInvalid() throws Exception {
+        Path sleeper = script("materialize-sleeper", "#!/bin/sh\nexec sleep 30\n");
+        String invalidArtifactId = "invalid\u0000artifact";
+        Path invalid = script("invalid", "#!/bin/sh\nexit 0\n");
+        VerifiedRelease release = verified(List.of(input("sleeper", sleeper), input(invalidArtifactId, invalid)));
+        var configuration = new LocalProcessTargetConfiguration(
+            temporaryDirectory.resolve("invalid-materialization"), "java", List.of(
+                new LocalProcessTargetConfiguration.Unit("sleeper", List.of(), Map.of(),
+                    new LocalProcessTargetConfiguration.Readiness("", 30)),
+                new LocalProcessTargetConfiguration.Unit(invalidArtifactId, List.of(), Map.of(),
+                    new LocalProcessTargetConfiguration.Readiness("", 30))));
+        LocalProcessTarget target = (LocalProcessTarget) new LocalProcessTargetProvider().create(
+            configuration, new DeploymentServices(CredentialResolver.NONE));
+        var plan = target.plan(release, new DeploymentRequest("local", "key"));
+        var registration = target.register(plan);
+
+        assertThrows(DeploymentException.class, () -> target.materialize(plan, registration));
+        assertStopped(startedProcesses(target));
+    }
+
+    @Test
+    void terminatesProcessesWhenReadinessUriIsRelative() throws Exception {
+        Path sleeper = script("relative-readiness", "#!/bin/sh\nexec sleep 30\n");
+        VerifiedRelease release = verified(List.of(input("sleeper", sleeper)));
+        var configuration = new LocalProcessTargetConfiguration(
+            temporaryDirectory.resolve("relative-readiness-deployment"), "java", List.of(
+                new LocalProcessTargetConfiguration.Unit("sleeper", List.of(), Map.of(),
+                    new LocalProcessTargetConfiguration.Readiness("relative", 30))));
+        LocalProcessTarget target = (LocalProcessTarget) new LocalProcessTargetProvider().create(
+            configuration, new DeploymentServices(CredentialResolver.NONE));
+        var plan = target.plan(release, new DeploymentRequest("local", "key"));
+        var registration = target.register(plan);
+        var physical = target.materialize(plan, registration);
+
+        assertThrows(DeploymentException.class, () -> target.verifyRuntime(plan, physical));
+        assertStopped(startedProcesses(target));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Process> startedProcesses(LocalProcessTarget target) throws Exception {
+        var field = LocalProcessTarget.class.getDeclaredField("processes");
+        field.setAccessible(true);
+        return (List<Process>) field.get(target);
+    }
+
+    private static void assertStopped(List<Process> processes) throws Exception {
+        assertFalse(processes.isEmpty());
+        for (Process process : processes) {
+            process.onExit().get(5, TimeUnit.SECONDS);
+            assertFalse(process.isAlive());
+        }
     }
 
     private LocalProcessTargetConfiguration.Unit unit(String id, int port, int timeout) {

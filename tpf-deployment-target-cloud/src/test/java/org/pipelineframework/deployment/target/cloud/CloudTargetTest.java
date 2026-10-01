@@ -1,13 +1,15 @@
 package org.pipelineframework.deployment.target.cloud;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.file.Path;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -42,10 +44,12 @@ class CloudTargetTest {
         byte[] descriptorBytes = "{\"schemaVersion\":1}\n".getBytes();
         AtomicReference<byte[]> received = new AtomicReference<>();
         AtomicReference<String> idempotency = new AtomicReference<>();
+        AtomicReference<String> query = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/api/v1/organizations/example/applications/payments/environments/staging/deployments", exchange -> {
+        server.createContext("/cloud/api/v1/organizations/example/applications/payments/environments/staging/deployments", exchange -> {
             received.set(exchange.getRequestBody().readAllBytes());
             idempotency.set(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            query.set(exchange.getRequestURI().getRawQuery());
             assertEquals("Bearer secret", exchange.getRequestHeaders().getFirst("Authorization"));
             assertEquals("CUSTOMER_MANAGED", exchange.getRequestHeaders().getFirst("X-TPF-Deployment-Mode"));
             byte[] response = "{\"deploymentId\":\"deployment-1\",\"status\":\"REGISTERED\"}".getBytes();
@@ -56,7 +60,7 @@ class CloudTargetTest {
         server.start();
         try {
             var configuration = new CloudTargetConfiguration(
-                URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/cloud?tenant=example"),
                 "example", "payments", "staging", "CUSTOMER_MANAGED", "cloud");
             CloudTarget target = (CloudTarget) new CloudTargetProvider().create(
                 configuration,
@@ -69,6 +73,7 @@ class CloudTargetTest {
 
             assertArrayEquals(descriptorBytes, received.get());
             assertEquals("key-1", idempotency.get());
+            assertEquals("tenant=example", query.get());
             assertEquals("deployment-1", result.deploymentId());
             assertEquals(DeploymentStatus.REGISTERED, result.status());
             assertEquals(StageState.NOT_REQUESTED, result.physicalDeployment());
@@ -77,6 +82,23 @@ class CloudTargetTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void requiresHttpsExceptForLoopbackHttp() {
+        assertDoesNotThrow(() -> configuration(URI.create("https://api.example.test/cloud?tenant=example")));
+        assertDoesNotThrow(() -> configuration(URI.create("http://localhost:8080")));
+        assertDoesNotThrow(() -> configuration(URI.create("http://127.42.0.1:8080")));
+        assertDoesNotThrow(() -> configuration(URI.create("http://[::1]:8080")));
+        assertThrows(IllegalArgumentException.class,
+            () -> configuration(URI.create("http://api.example.test")));
+        assertThrows(IllegalArgumentException.class,
+            () -> configuration(URI.create("ftp://127.0.0.1/releases")));
+    }
+
+    private static CloudTargetConfiguration configuration(URI endpoint) {
+        return new CloudTargetConfiguration(
+            endpoint, "example", "payments", "staging", "CUSTOMER_MANAGED", "cloud");
     }
 
     private VerifiedRelease verified(byte[] bytes) {

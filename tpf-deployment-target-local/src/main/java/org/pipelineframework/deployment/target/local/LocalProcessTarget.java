@@ -89,7 +89,7 @@ final class LocalProcessTarget implements DeploymentTarget {
                 processes.add(builder.start());
             }
             return new PhysicalDeployment(identity, StageState.COMPLETED);
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             terminateStartedProcesses();
             throw new DeploymentException(DeploymentException.FailureClass.TARGET, "Failed to start local deployment", e);
         }
@@ -108,7 +108,7 @@ final class LocalProcessTarget implements DeploymentTarget {
                 }
             }
             return new RuntimeVerification(StageState.COMPLETED, "All local units are ready");
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             terminateStartedProcesses();
             throw new DeploymentException(DeploymentException.FailureClass.RUNTIME, e.getMessage(), e);
         }

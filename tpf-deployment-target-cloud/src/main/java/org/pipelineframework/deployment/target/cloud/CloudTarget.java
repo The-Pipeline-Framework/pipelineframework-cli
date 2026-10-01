@@ -3,6 +3,7 @@ package org.pipelineframework.deployment.target.cloud;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -54,7 +55,7 @@ final class CloudTarget implements DeploymentTarget {
         }
         String path = DEPLOYMENT_PATH.formatted(
             encode(configuration.organization()), encode(configuration.application()), encode(configuration.environment()));
-        HttpRequest request = HttpRequest.newBuilder(configuration.endpoint().resolve(path))
+        HttpRequest request = HttpRequest.newBuilder(deploymentUri(path))
             .timeout(Duration.ofSeconds(60))
             .header("Authorization", "Bearer " + bearer.token())
             .header("Content-Type", RELEASE_MEDIA_TYPE)
@@ -109,6 +110,18 @@ final class CloudTarget implements DeploymentTarget {
 
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private URI deploymentUri(String path) {
+        URI endpoint = configuration.endpoint();
+        String basePath = endpoint.getRawPath();
+        if (basePath == null || basePath.isBlank() || basePath.equals("/")) {
+            basePath = "";
+        } else if (basePath.endsWith("/")) {
+            basePath = basePath.substring(0, basePath.length() - 1);
+        }
+        String query = endpoint.getRawQuery() == null ? "" : "?" + endpoint.getRawQuery();
+        return URI.create(endpoint.getScheme() + "://" + endpoint.getRawAuthority() + basePath + path + query);
     }
 
     private static String requiredText(JsonNode node, String field) throws DeploymentException {
