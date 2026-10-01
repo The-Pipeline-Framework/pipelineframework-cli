@@ -1,0 +1,42 @@
+openapi: 3.1.0
+info:
+  title: TPF Cloud Deployment API
+  version: 1.0.0
+paths:
+  /api/v1/organizations/{organization}/applications/{application}/environments/{environment}/deployments:
+    post:
+      operationId: registerCustomerManagedDeployment
+      summary: Register an immutable TPF Release and create a customer-managed Deployment
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: organization, in: path, required: true, schema: {type: string}}
+        - {name: application, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string}}
+        - {name: X-TPF-Deployment-Mode, in: header, required: true, schema: {type: string, const: CUSTOMER_MANAGED}}
+      requestBody:
+        required: true
+        content:
+          application/vnd.tpf.pipeline-release+json:
+            schema: {type: object}
+      responses:
+        '201':
+          description: Release and customer-managed Deployment registered
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [deploymentId, status]
+                properties:
+                  deploymentId: {type: string}
+                  status: {type: string, const: REGISTERED}
+        '401': {description: Authentication failed}
+        '403': {description: Authorisation failed}
+        '409': {description: Immutable Release identity conflicts with different content}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

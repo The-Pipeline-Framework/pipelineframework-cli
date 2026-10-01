@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 https://maven.apache.org/xsd/assembly-2.2.0.xsd">
+  <id>distribution</id>
+  <formats><format>zip</format><format>tar.gz</format></formats>
+  <includeBaseDirectory>true</includeBaseDirectory>
+  <baseDirectory>tpf-${project.version}</baseDirectory>
+  <files>
+    <file><source>${project.build.directory}/${project.build.finalName}-all.jar</source><outputDirectory>lib</outputDirectory><destName>tpf.jar</destName></file>
+    <file><source>src/main/dist/bin/tpf</source><outputDirectory>bin</outputDirectory><fileMode>0755</fileMode></file>
+    <file><source>src/main/dist/bin/tpf.cmd</source><outputDirectory>bin</outputDirectory></file>
+  </files>
+</assembly>

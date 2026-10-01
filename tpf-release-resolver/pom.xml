@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
+  <parent><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-cli-parent</artifactId><version>26.9.4-SNAPSHOT</version></parent>
+  <artifactId>tpf-release-resolver</artifactId>
+  <dependencies>
+    <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-runtime-core</artifactId><version>${tpf.version}</version></dependency>
+    <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-runtime-serialization</artifactId><version>${tpf.version}</version></dependency>
+    <dependency><groupId>org.apache.maven</groupId><artifactId>maven-resolver-provider</artifactId></dependency>
+    <dependency><groupId>org.apache.maven.resolver</groupId><artifactId>maven-resolver-connector-basic</artifactId></dependency>
+    <dependency><groupId>org.apache.maven.resolver</groupId><artifactId>maven-resolver-transport-file</artifactId></dependency>
+    <dependency><groupId>org.apache.maven.resolver</groupId><artifactId>maven-resolver-transport-http</artifactId></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>
