@@ -1,0 +1,28 @@
+name: CLI Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-path: ${{ github.workspace }}/.m2/repository
+      - name: Verify publication configuration
+        run: python3 scripts/test-publication-config.py
+      - name: Verify canonical reactor
+        run: ./mvnw -B clean verify --no-transfer-progress -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository"
