@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.pipelineframework</groupId>
     <artifactId>pipelineframework-cli-parent</artifactId>
-    <version>26.9.4-SNAPSHOT</version>
+    <version>26.10.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>The Pipeline Framework CLI</name>
     <description>Build-tool-neutral verification and deployment of immutable TPF Releases.</description>
@@ -43,7 +43,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
-        <tpf.version>26.9.4-SNAPSHOT</tpf.version>
+        <tpf.version>26.10.1-SNAPSHOT</tpf.version>
         <jackson.version>2.22.2</jackson.version>
         <maven.resolver.version>1.9.27</maven.resolver.version>
         <maven.version>3.9.16</maven.version>
