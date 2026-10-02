@@ -1,0 +1,32 @@
+#!/bin/sh
+# Install on PATH as tpf. Resolver configuration uses container paths.
+set -eu
+: "${TPF_IMAGE:?Set TPF_IMAGE to ghcr.io/the-pipeline-framework/tpf:VERSION or @sha256:DIGEST}"
+: "${TPF_MAVEN_SETTINGS:?Set TPF_MAVEN_SETTINGS to a readable settings.xml}"
+: "${TPF_OCI_CONFIG:?Set TPF_OCI_CONFIG to a readable Docker config.json}"
+engine=${TPF_CONTAINER_ENGINE:-docker}
+credentials=${TPF_CREDENTIAL_DIR:-"$HOME/.tpf"}
+mkdir -p "$credentials"
+test -f "$TPF_MAVEN_SETTINGS"
+test -f "$TPF_OCI_CONFIG"
+set -- run --rm --init --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD,dst=/work" \
+  --mount "type=bind,src=$credentials,dst=/home/tpf/.tpf" \
+  --mount "type=bind,src=$TPF_MAVEN_SETTINGS,dst=/home/tpf/.m2/settings.xml,readonly" \
+  --mount "type=bind,src=$TPF_OCI_CONFIG,dst=/home/tpf/.docker/config.json,readonly" \
+  "$TPF_IMAGE" "$@"
+# Forward only the selected Cloud credential, without putting its value on the command line.
+if [ -n "${TPF_CLOUD_CREDENTIAL_ENV:-}" ]; then
+  case "$TPF_CLOUD_CREDENTIAL_ENV" in
+    TPF_CREDENTIAL_*) ;;
+    *) echo 'TPF_CLOUD_CREDENTIAL_ENV must name a TPF_CREDENTIAL_* variable' >&2; exit 2 ;;
+  esac
+  # Insert before the image; use a second argument construction to avoid eval.
+  shift # run
+  set -- run --env "$TPF_CLOUD_CREDENTIAL_ENV" "$@"
+fi
+if [ "$(basename "$engine")" = podman ] && [ "$("$engine" info --format '{{.Host.Security.Rootless}}')" = true ]; then
+  shift
+  set -- run --userns keep-id "$@"
+fi
+exec "$engine" "$@"
