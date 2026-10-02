@@ -77,20 +77,7 @@ jobs:
         run: |
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker load -i tpf-tested.tar
-          python3 - <<'PY'
-          import json, subprocess
-          metadata = json.load(open('container-publication.json'))
-          for tag in metadata['tags']:
-              subprocess.run(['docker', 'tag', 'tpf-tested', tag], check=True)
-              subprocess.run(['docker', 'push', tag], check=True)
-          inspected = json.loads(subprocess.check_output(['docker', 'image', 'inspect', metadata['tags'][0]]))[0]
-          references = [value for value in inspected['RepoDigests'] if value.startswith(metadata['image'] + '@sha256:')]
-          assert len(references) == 1, references
-          metadata['digestReference'] = references[0]
-          with open('container-publication.json', 'w') as output:
-              json.dump(metadata, output, indent=2)
-              output.write('\n')
-          PY
+          python3 scripts/publish-container.py
           docker logout ghcr.io
       - name: Require anonymous pull and test the published digest
         run: |

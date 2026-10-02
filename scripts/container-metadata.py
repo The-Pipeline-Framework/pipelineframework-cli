@@ -11,7 +11,7 @@ parser.add_argument("--revision", required=True)
 parser.add_argument("--release-tag", default="")
 parser.add_argument("--output", type=Path, required=True)
 args = parser.parse_args()
-version = ET.parse("pom.xml").getroot().findtext("{http://maven.apache.org/POM/4.0.0}version")
+version = ET.parse("pom.xml").getroot().findtext("{http://maven.apache.org/POM/4.0.0}version") or ""
 if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-SNAPSHOT)?", version):
     parser.error("Unsupported Maven version")
 if not re.fullmatch(r"[0-9a-f]{40}", args.revision):

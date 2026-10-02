@@ -6,12 +6,13 @@ set -eu
 : "${TPF_OCI_CONFIG:?Set TPF_OCI_CONFIG to a readable Docker config.json}"
 engine=${TPF_CONTAINER_ENGINE:-docker}
 credentials=${TPF_CREDENTIAL_DIR:-"$HOME/.tpf"}
-mkdir -p "$credentials"
+mkdir -p "$credentials/maven"
 test -f "$TPF_MAVEN_SETTINGS"
 test -f "$TPF_OCI_CONFIG"
 set -- run --rm --init --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=$PWD,dst=/work" \
   --mount "type=bind,src=$credentials,dst=/home/tpf/.tpf" \
+  --mount "type=bind,src=$credentials/maven,dst=/home/tpf/.m2/repository" \
   --mount "type=bind,src=$TPF_MAVEN_SETTINGS,dst=/home/tpf/.m2/settings.xml,readonly" \
   --mount "type=bind,src=$TPF_OCI_CONFIG,dst=/home/tpf/.docker/config.json,readonly" \
   "$TPF_IMAGE" "$@"

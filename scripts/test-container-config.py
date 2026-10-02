@@ -27,6 +27,36 @@ class ContainerConfigurationTest(unittest.TestCase):
             (work / "pom.xml").write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><version>1.2.3-SNAPSHOT</version></project>')
             self.assertNotEqual(0, subprocess.run(command + ["--revision", "a" * 40, "--release-tag", "v1.2.3-SNAPSHOT"],
                                                  cwd=work, capture_output=True).returncode)
+            (work / "pom.xml").write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"/>')
+            missing = subprocess.run(command + ["--revision", "a" * 40], cwd=work, capture_output=True, text=True)
+            self.assertEqual(2, missing.returncode)
+            self.assertIn("Unsupported Maven version", missing.stderr)
+            self.assertNotIn("Traceback", missing.stderr)
+
+    def test_publication_digest_comes_from_registry_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            engine = work / "docker"
+            engine.write_text('#!/usr/bin/env python3\nimport json,os,sys\n'
+                              'assert "image" not in sys.argv, "Must not inspect local RepoDigests"\n'
+                              'if sys.argv[1:4] == ["buildx", "imagetools", "inspect"]:\n'
+                              ' print(json.dumps({"digest": os.environ["FIXTURE_DIGEST"]}))\n')
+            engine.chmod(0o755)
+            metadata = work / "metadata.json"
+            image = "ghcr.io/the-pipeline-framework/tpf"
+            original = json.dumps({"image": image, "tags": [image + ":test"]})
+            metadata.write_text(original)
+            command = ["python3", str(ROOT / "scripts/publish-container.py"), "--engine", str(engine),
+                       "--metadata", str(metadata)]
+            environment = dict(os.environ, FIXTURE_DIGEST="sha256:" + "c" * 64)
+            subprocess.run(command, env=environment, check=True)
+            self.assertEqual(image + "@" + environment["FIXTURE_DIGEST"],
+                             json.loads(metadata.read_text())["digestReference"])
+            metadata.write_text(original)
+            environment["FIXTURE_DIGEST"] = "bad-digest"
+            invalid = subprocess.run(command, env=environment, capture_output=True)
+            self.assertEqual(2, invalid.returncode)
+            self.assertEqual(original, metadata.read_text())
 
     def test_publication_is_trusted_and_retests_published_digest(self):
         workflow = (ROOT / ".github/workflows/publish-container.yml").read_text()
@@ -71,6 +101,8 @@ class ContainerConfigurationTest(unittest.TestCase):
             self.assertIn(f"type=bind,src={settings},dst=/home/tpf/.m2/settings.xml,readonly", arguments)
             self.assertIn(f"type=bind,src={oci},dst=/home/tpf/.docker/config.json,readonly", arguments)
             self.assertTrue((work / "credentials").is_dir())
+            self.assertIn(f"type=bind,src={work / 'credentials/maven'},dst=/home/tpf/.m2/repository", arguments)
+            self.assertTrue((work / "credentials/maven").is_dir())
             podman = work / "podman"
             podman.write_text('#!/usr/bin/env python3\nimport json,sys\n'
                               'print("true" if sys.argv[1] == "info" else json.dumps(sys.argv[1:]))\n')

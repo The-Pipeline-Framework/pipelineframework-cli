@@ -55,11 +55,14 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
       <activeProfiles><activeProfile>fixture</activeProfile></activeProfiles></settings>''')
     (resolver / "config.json").write_text(json.dumps({"auths": {registry: {"auth": basic.removeprefix("Basic ")}}}))
     configuration = dict(resolverProfiles={"default": dict(file=False,
-                         maven=dict(settings="/resolver/settings.xml", localRepository="/home/tpf/.tpf/maven"),
+                         maven=dict(settings="/resolver/settings.xml"),
                          oci=dict(credentials="docker-config", insecureRegistries=[registry]))},
                          environments={"staging": dict(resolverProfile="default", target=dict(
                              type="tpf-cloud", endpoint=endpoint, organization="example", application="proof",
                              environment="staging", mode="CUSTOMER_MANAGED", credential="cloud"))})
+    explicit = json.loads(json.dumps(configuration["resolverProfiles"]["default"]))
+    explicit["maven"]["localRepository"] = "/home/tpf/.tpf/maven"
+    configuration["resolverProfiles"]["explicit"] = explicit
     (resolver / "tpf-deploy.yaml").write_text(json.dumps(configuration))
     descriptor = dict(schemaVersion=1, pipelineId="container-proof", contractVersion=contract_version,
                       releaseVersion="container-proof-1", compiledTruthArtifactId="carrier", artifacts=[
@@ -73,14 +76,18 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
     def invoke(work, credentials, command, token="fixture-cloud-token"):
         environment = dict(os.environ)
         environment["TPF_CREDENTIAL_CLOUD"] = token or ""
+        (credentials / "maven").mkdir(exist_ok=True)
         container = [args.engine, "run", "--rm", "--init", "--network", "container:" + fixture,
                      "--user", f"{os.getuid()}:{os.getgid()}",
                      "--mount", f"type=bind,src={work},dst=/work",
                      "--mount", f"type=bind,src={credentials},dst=/home/tpf/.tpf",
+                     "--mount", f"type=bind,src={credentials / 'maven'},dst=/home/tpf/.m2/repository",
                      "--mount", f"type=bind,src={resolver},dst=/resolver,readonly",
                      "--env", "DOCKER_CONFIG=/resolver"]
         if token:
             container += ["--env", "TPF_CREDENTIAL_CLOUD"]
+        if command[0] == "release":
+            command = [*command, "--resolver-profile", "explicit"]
         container += [args.image, *command, "--release", "pipeline-release.json",
                       "--config", "/resolver/tpf-deploy.yaml", "--output", "json"]
         return subprocess.run(container, env=environment, text=True, capture_output=True, timeout=120)
