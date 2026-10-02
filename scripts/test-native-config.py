@@ -7,6 +7,9 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import json
+import os
+import shutil
+import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 
 def load(name):
@@ -14,6 +17,29 @@ def load(name):
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
 
 class NativePolicyTest(unittest.TestCase):
+    def test_preinstalled_linux_homebrew_off_path_is_reused(self):
+        for linked in (True,False):
+            with self.subTest(linked=linked), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);prefix=root/'linuxbrew';tools=root/'tools';tools.mkdir()
+                brew=prefix/'Homebrew/bin/brew';brew.parent.mkdir(parents=True)
+                brew.write_text("#!/bin/sh\nprintf 'Homebrew fixture\\n'\n");brew.chmod(0o755)
+                if linked:
+                    (prefix/'bin').mkdir();(prefix/'bin/brew').symlink_to(brew)
+                uname=tools/'uname';uname.write_text("#!/bin/sh\nprintf 'Linux\\n'\n");uname.chmod(0o755)
+                for command in ('mkdir','ln'):
+                    (tools/command).symlink_to(shutil.which(command))
+                script=root/'setup.sh'
+                script.write_text((ROOT/'scripts/setup-homebrew.sh').read_text().replace(
+                    'prefix=/home/linuxbrew/.linuxbrew','prefix='+str(prefix)))
+                path_file=root/'github-path'
+                env={**os.environ,'PATH':str(tools),'GITHUB_PATH':str(path_file)}
+                for attempt in range(2):
+                    result=subprocess.run([shutil.which('sh'),str(script)],env=env,text=True,capture_output=True)
+                    self.assertEqual(0,result.returncode,result.stderr)
+                    self.assertEqual('Homebrew fixture\n',result.stdout)
+                self.assertEqual([str(prefix/'bin')]*2,path_file.read_text().splitlines())
+                self.assertTrue((prefix/'bin/brew').is_file())
+
     def test_toolchain_is_pinned_for_exactly_supported_architectures(self):
         setup=load('setup-mandrel')
         self.assertEqual('25.0.4.1-Final',setup.VERSION)
