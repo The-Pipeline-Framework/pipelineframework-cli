@@ -26,6 +26,11 @@ class AuthCommandTest {
         assertEquals(0,execute("auth","logout","--credential-dir",temporary.resolve("credentials").toString()).exit());
         assertEquals(0,execute("auth","logout","--credential-dir",temporary.resolve("credentials").toString()).exit());
     }
+    @Test void helpWorksWithoutCredentialsOrRequiredLoginArguments() {
+        assertEquals(0,execute("auth","--help").exit());
+        for (String command : java.util.List.of("login","status","logout"))
+            assertEquals(0,execute("auth",command,"--help").exit());
+    }
     @Test void deviceLoginPendingSuccessStatusAndLogoutNeverPrintTokens() throws Exception {
         try (var fixture=new DeviceFixture("pending")) {
             var result=login(fixture);

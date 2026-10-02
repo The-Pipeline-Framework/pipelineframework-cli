@@ -13,7 +13,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.Model.CommandSpec;
 
-@Command(name="auth", description="Manage human Cloud credentials (deploy never prompts).",
+@Command(name="auth", mixinStandardHelpOptions=true, description="Manage human Cloud credentials (deploy never prompts).",
         subcommands={AuthCommand.Login.class, AuthCommand.Status.class, AuthCommand.Logout.class})
 final class AuthCommand implements Runnable {
     @Spec CommandSpec spec;
@@ -31,7 +31,7 @@ final class AuthCommand implements Runnable {
             return CliSupport.AUTH_FAILURE;
         }
     }
-    @Command(name="login", description="Explicit public-client device authorization; no embedded client secret.")
+    @Command(name="login", mixinStandardHelpOptions=true, description="Explicit public-client device authorization; no embedded client secret.")
     static final class Login extends Credentials {
         @Option(names="--issuer", required=true) URI issuer;
         @Option(names="--client-id", required=true) String clientId;
@@ -70,7 +70,7 @@ final class AuthCommand implements Runnable {
             catch (Exception rejected) { return failure(); }
         }
     }
-    @Command(name="status", description="Check credentials without printing tokens; refresh if needed.")
+    @Command(name="status", mixinStandardHelpOptions=true, description="Check credentials without printing tokens; refresh if needed.")
     static final class Status extends Credentials {
         @Override public Integer call() {
             try {
@@ -80,7 +80,7 @@ final class AuthCommand implements Runnable {
             } catch (Exception unavailable) { return failure(); }
         }
     }
-    @Command(name="logout", description="Remove local human credentials; does not revoke issued provider tokens.")
+    @Command(name="logout", mixinStandardHelpOptions=true, description="Remove local human credentials; does not revoke issued provider tokens.")
     static final class Logout extends Credentials {
         @Override public Integer call() {
             try { store().logout(profile); spec.commandLine().getOut().println("Signed out locally. Human credentials removed."); return 0; }
