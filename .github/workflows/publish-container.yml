@@ -33,8 +33,8 @@ jobs:
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: '21'
-      - name: Verify Java 21 CLI and distribution policy
+          java-version: '25'
+      - name: Verify Java 25 CLI and distribution policy
         run: |
           ./mvnw -B clean verify --no-transfer-progress -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository"
           python3 scripts/test-publication-config.py

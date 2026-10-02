@@ -1,0 +1,912 @@
+{
+  "reflection": [
+    {
+      "type": "com.fasterxml.jackson.databind.deser.Deserializers[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.fasterxml.jackson.databind.ser.Serializers[]"
+    },
+    {
+      "type": "com.fasterxml.jackson.datatype.jdk8.Jdk8Module"
+    },
+    {
+      "type": "com.sun.crypto.provider.AESCipher$General",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ARCFOURCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ChaCha20Cipher$ChaCha20Poly1305",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESedeCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DHParameters",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.GaloisCounterMode$AESGCM",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.TlsMasterSecretGenerator",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderFactoryImpl",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "groovy.lang.Closure"
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Class",
+      "methods": [
+        {
+          "name": "getRecordComponents",
+          "parameterTypes": []
+        },
+        {
+          "name": "isRecord",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Enum",
+      "serializable": true
+    },
+    {
+      "type": "java.lang.Object"
+    },
+    {
+      "type": "java.lang.Record"
+    },
+    {
+      "type": "java.lang.String",
+      "serializable": true
+    },
+    {
+      "type": "java.lang.reflect.RecordComponent",
+      "methods": [
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "getType",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.nio.file.Path"
+    },
+    {
+      "type": "java.nio.file.Paths",
+      "methods": [
+        {
+          "name": "get",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.security.AlgorithmParametersSpi"
+    },
+    {
+      "type": "java.security.KeyStoreSpi"
+    },
+    {
+      "type": "java.sql.Connection"
+    },
+    {
+      "type": "java.sql.Date"
+    },
+    {
+      "type": "java.sql.Driver"
+    },
+    {
+      "type": "java.sql.DriverManager"
+    },
+    {
+      "type": "java.sql.Time"
+    },
+    {
+      "type": "java.sql.Timestamp"
+    },
+    {
+      "type": "java.time.Duration"
+    },
+    {
+      "type": "java.time.Instant"
+    },
+    {
+      "type": "java.time.LocalDate"
+    },
+    {
+      "type": "java.time.LocalDateTime"
+    },
+    {
+      "type": "java.time.LocalTime"
+    },
+    {
+      "type": "java.time.MonthDay"
+    },
+    {
+      "type": "java.time.OffsetDateTime"
+    },
+    {
+      "type": "java.time.OffsetTime"
+    },
+    {
+      "type": "java.time.Period"
+    },
+    {
+      "type": "java.time.Year"
+    },
+    {
+      "type": "java.time.YearMonth"
+    },
+    {
+      "type": "java.time.ZoneId"
+    },
+    {
+      "type": "java.time.ZoneOffset"
+    },
+    {
+      "type": "java.time.ZonedDateTime"
+    },
+    {
+      "type": "java.util.HashMap",
+      "serializable": true
+    },
+    {
+      "type": "org.apache.http.auth.ChallengeState",
+      "serializable": true
+    },
+    {
+      "type": "org.apache.http.impl.auth.BasicScheme",
+      "serializable": true
+    },
+    {
+      "type": "org.apache.http.impl.auth.RFC2617Scheme",
+      "serializable": true
+    },
+    {
+      "type": "org.apache.maven.repository.internal.DefaultArtifactDescriptorReader",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.repository.internal.DefaultModelCacheFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.repository.internal.DefaultVersionRangeResolver",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.repository.internal.DefaultVersionResolver",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.repository.internal.SnapshotMetadataGeneratorFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.repository.internal.VersionsMetadataGeneratorFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.connector.basic.BasicRepositoryConnectorFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultArtifactResolver",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultChecksumPolicyProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultDeployer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultFileProcessor",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultInstaller",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultLocalPathComposer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultLocalRepositoryProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultMetadataResolver",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultOfflineController",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultRemoteRepositoryManager",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultRepositoryConnectorProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultRepositoryEventDispatcher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultRepositoryLayoutProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultRepositorySystem",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultRepositorySystemLifecycle",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultTrackingFileManager",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultTransporterProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultUpdateCheckManager",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.DefaultUpdatePolicyAnalyzer",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.EnhancedLocalRepositoryManagerFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.Maven2RepositoryLayoutFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.SimpleLocalRepositoryManagerFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.collect.DefaultDependencyCollector",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.filter.DefaultRemoteRepositoryFilterManager",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.synccontext.DefaultSyncContextFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.internal.impl.synccontext.named.NamedLockFactoryAdapterFactoryImpl",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.transport.file.FileTransporterFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.eclipse.aether.transport.http.HttpTransporterFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.AuthCommand",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.AuthCommand$Credentials",
+      "fields": [
+        {
+          "name": "directory"
+        },
+        {
+          "name": "profile"
+        },
+        {
+          "name": "spec"
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.AuthCommand$Login",
+      "fields": [
+        {
+          "name": "clientId"
+        },
+        {
+          "name": "issuer"
+        },
+        {
+          "name": "verificationHosts"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.AuthCommand$Logout",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.AuthCommand$Status",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.DeployCommand",
+      "fields": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "environment"
+        },
+        {
+          "name": "output"
+        },
+        {
+          "name": "release"
+        },
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.ReleaseCommand",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.ReleaseVerifyCommand",
+      "fields": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "output"
+        },
+        {
+          "name": "release"
+        },
+        {
+          "name": "resolverProfile"
+        },
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.TpfCli",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.TpfCli$ManifestVersionProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.deployment.target.cloud.CloudTargetConfiguration",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.net.URI",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.PipelineBundleCapabilities",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "boolean",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.PipelineBundleStepDescriptor",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.util.Map",
+            "java.util.Map"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.composition.PipelineCompositionContinuation"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.composition.PipelineCompositionContinuationKind"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.composition.PipelineCompositionDefinition"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.composition.PipelineCompositionDescriptor"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.composition.PipelineCompositionNode"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.ImportedBlockCallableDescriptor"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.ImportedBlockOperationDescriptor"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.ImportedBlockRequirementDescriptor"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.ImportedPipelineDefinitionDescriptor"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineContractDescriptor",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.lang.String",
+            "java.util.List",
+            "org.pipelineframework.orchestrator.PipelineBundleCapabilities",
+            "java.util.Map",
+            "java.lang.String",
+            "org.pipelineframework.orchestrator.composition.PipelineCompositionDescriptor",
+            "java.util.List",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseArtifactDescriptor",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.util.List",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDescriptor",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "picocli.CommandLine$AutoHelpMixin",
+      "fields": [
+        {
+          "name": "helpRequested"
+        },
+        {
+          "name": "versionRequested"
+        }
+      ]
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorInfo"
+    },
+    {
+      "type": "sun.text.resources.BreakIteratorResources"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en_US"
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/services/com.fasterxml.jackson.databind.Module"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.InetAddressResolverProvider"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.URLStreamHandlerProvider"
+    },
+    {
+      "glob": "META-INF/services/java.nio.channels.spi.SelectorProvider"
+    },
+    {
+      "glob": "META-INF/services/javax.xml.parsers.DocumentBuilderFactory"
+    },
+    {
+      "glob": "mozilla/public-suffix-list.txt"
+    },
+    {
+      "glob": "org/slf4j/impl/StaticLoggerBinder.class"
+    },
+    {
+      "glob": "tpf-build.properties"
+    },
+    {
+      "module": "java.base",
+      "glob": "jdk/internal/icu/impl/data/icudt76b/nfc.nrm"
+    },
+    {
+      "module": "java.base",
+      "glob": "sun/text/resources/LineBreakIteratorData"
+    }
+  ]
+}

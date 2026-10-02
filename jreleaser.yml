@@ -1,0 +1,53 @@
+project:
+  name: tpf
+  description: Verify and deploy immutable TPF Releases
+  longDescription: The Pipeline Framework command-line client
+  links:
+    homepage: https://pipelineframework.org
+  authors: [Mariano E. Barcia]
+  license: Apache-2.0
+  inceptionYear: '2026'
+  stereotype: CLI
+  languages:
+    java:
+      groupId: org.pipelineframework
+      artifactId: tpf-cli
+      version: 25
+release:
+  github:
+    owner: The-Pipeline-Framework
+    name: pipelineframework-cli
+    tagName: 'v{{projectVersion}}'
+    overwrite: true
+    changelog:
+      formatted: ALWAYS
+checksum:
+  individual: true
+distributions:
+  tpf:
+    type: BINARY
+    executable:
+      name: tpf
+    extraProperties:
+      graalVMNativeImage: true
+    artifacts:
+      - path: 'target/distributions/tpf-{{projectVersion}}-osx-aarch_64.zip'
+        platform: osx-aarch_64
+      - path: 'target/distributions/tpf-{{projectVersion}}-linux-x86_64.zip'
+        platform: linux-x86_64
+      - path: 'target/distributions/tpf-{{projectVersion}}-linux-aarch_64.zip'
+        platform: linux-aarch_64
+files:
+  globs:
+    - pattern: 'target/distributions/*.json'
+    - pattern: 'target/distributions/*.sha256'
+packagers:
+  brew:
+    active: RELEASE
+    multiPlatform: true
+    formulaName: tpf
+    repository:
+      owner: The-Pipeline-Framework
+      name: homebrew-tap
+      branch: main
+      branchPush: main

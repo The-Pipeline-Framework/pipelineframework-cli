@@ -7,3 +7,5 @@
 .candidate-version.json
 candidate-manifest.json
 __pycache__/
+
+/out/

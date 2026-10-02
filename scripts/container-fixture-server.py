@@ -4,9 +4,12 @@ import base64
 import hashlib
 import http.server
 import json
+import os
+import ssl
+from urllib.parse import parse_qs
 from pathlib import Path
 
-root = Path("/fixture")
+root = Path(os.environ.get("TPF_FIXTURE_ROOT", "/fixture"))
 basic = "Basic " + base64.b64encode(b"proof:fixture-password").decode()
 manifest = (root / "manifest.json").read_bytes()
 manifest_digest = "sha256:" + hashlib.sha256(manifest).hexdigest()
@@ -44,16 +47,47 @@ class Fixture(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def respond(self, status, value):
+        payload = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        if self.path.startswith("/oauth2/"):
+            fields = parse_qs(body.decode())
+            if self.path.endswith("device_authorization"):
+                type(self).polls = 0
+                host = (root / "verification-host").read_text() if (root / "verification-host").exists() else "127.0.0.1"
+                self.respond(200, dict(device_code="fixture-device-secret", user_code="TPF-PROOF",
+                    verification_uri=("http://" if host == "127.0.0.1" else "https://") + host + "/verify", expires_in=60, interval=1))
+            elif fields.get("grant_type") == ["urn:ietf:params:oauth:grant-type:device_code"]:
+                type(self).polls += 1
+                if type(self).polls <= 2:
+                    self.respond(400, dict(error="authorization_pending" if type(self).polls == 1 else "slow_down"))
+                else:
+                    self.respond(200, dict(token_type="Bearer", access_token="fixture-cloud-token", refresh_token="fixture-refresh-secret", expires_in=3600))
+            elif fields.get("grant_type") == ["refresh_token"]:
+                state = (root / "refresh-state").read_text() if (root / "refresh-state").exists() else "ok"
+                if state != "ok": self.respond(400, dict(error=state))
+                elif fields.get("refresh_token") != ["fixture-refresh-secret"]: self.respond(400, dict(error="invalid_grant"))
+                else: self.respond(200, dict(token_type="Bearer", access_token="fixture-cloud-token", refresh_token="fixture-rotated-secret", expires_in=3600))
+            elif fields.get("client_secret") == ["fixture-ci-secret"]:
+                self.respond(200, dict(token_type="Bearer", access_token="fixture-cloud-token", expires_in=3600))
+            else: self.respond(400, dict(error="access_denied"))
+            return
         if self.headers.get("Authorization") != "Bearer fixture-cloud-token":
-            self.send_response(401)
-            self.end_headers()
+            self.respond(401, dict(error="unauthorized"))
+            return
+        if (root / "forbidden").exists():
+            self.respond(403, dict(error="forbidden"))
             return
         if self.path != "/api/v1/organizations/example/applications/proof/environments/staging/deployments":
             self.send_response(404)
             self.end_headers()
             return
-        body = self.rfile.read(int(self.headers["Content-Length"]))
         observation = dict(body=base64.b64encode(body).decode(), key=self.headers.get("Idempotency-Key"),
                            mediaType=self.headers.get("Content-Type"), mode=self.headers.get("X-TPF-Deployment-Mode"))
         with (root / "submitted.jsonl").open("a") as log:
@@ -65,4 +99,9 @@ class Fixture(http.server.BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
 
-http.server.HTTPServer(("0.0.0.0", 8080), Fixture).serve_forever()
+server = http.server.HTTPServer(("127.0.0.1" if os.environ.get("TPF_FIXTURE_ROOT") else "0.0.0.0", int(os.environ.get("TPF_FIXTURE_PORT", "8080"))), Fixture)
+if os.environ.get("TPF_FIXTURE_CERT"):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(os.environ["TPF_FIXTURE_CERT"], os.environ["TPF_FIXTURE_KEY"])
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+server.serve_forever()
