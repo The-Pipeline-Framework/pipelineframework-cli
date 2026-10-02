@@ -10,7 +10,7 @@ import picocli.CommandLine.IVersionProvider;
     mixinStandardHelpOptions = true,
     versionProvider = TpfCli.ManifestVersionProvider.class,
     description = "Verify and deploy immutable TPF Releases.",
-    subcommands = {ReleaseCommand.class, DeployCommand.class})
+    subcommands = {ReleaseCommand.class, DeployCommand.class, AuthCommand.class})
 public final class TpfCli implements Runnable {
     public static final class ManifestVersionProvider implements IVersionProvider {
         @Override

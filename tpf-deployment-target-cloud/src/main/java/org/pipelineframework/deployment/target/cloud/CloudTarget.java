@@ -45,10 +45,16 @@ final class CloudTarget implements DeploymentTarget {
 
     @Override
     public ReleaseRegistration register(DeploymentPlan plan) throws DeploymentException {
-        Credential credential = services.credentials().resolve(new CredentialReference(configuration.credential()))
+        Credential credential;
+        try {
+            credential = services.credentials().resolve(new CredentialReference(configuration.credential()))
             .orElseThrow(() -> new DeploymentException(
                 DeploymentException.FailureClass.AUTHENTICATION,
-                "Credential " + configuration.credential() + " is unavailable"));
+                "Cloud credentials are unavailable; run tpf auth login for a human session or configure the CI OAuth credential source"));
+        } catch (RuntimeException failure) {
+            throw new DeploymentException(DeploymentException.FailureClass.AUTHENTICATION,
+                    "Cloud credential acquisition failed; retry, run tpf auth login, or check the injected CI credential source");
+        }
         if (!(credential instanceof Credential.Bearer bearer)) {
             throw new DeploymentException(
                 DeploymentException.FailureClass.AUTHENTICATION, "TPF Cloud requires a bearer credential");
@@ -67,7 +73,8 @@ final class CloudTarget implements DeploymentTarget {
             HttpResponse<byte[]> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() == 401 || response.statusCode() == 403) {
                 throw new DeploymentException(
-                    DeploymentException.FailureClass.AUTHENTICATION, "TPF Cloud rejected the credential");
+                    DeploymentException.FailureClass.AUTHENTICATION,
+                    "TPF Cloud rejected deployment access; run tpf auth login or check the CI credential, organisation and deploy permission");
             }
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new DeploymentException(
