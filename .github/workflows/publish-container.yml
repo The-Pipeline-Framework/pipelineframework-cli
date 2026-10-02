@@ -1,0 +1,94 @@
+name: Publish public CLI container
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-container-publication
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'The-Pipeline-Framework/pipelineframework-cli' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'release' && !github.event.release.prerelease))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require source merged into main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify Java 21 CLI and distribution policy
+        run: |
+          ./mvnw -B clean verify --no-transfer-progress -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository"
+          python3 scripts/test-publication-config.py
+          python3 scripts/test-container-config.py
+      - name: Prepare image identity
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+        run: python3 scripts/container-metadata.py --revision "$(git rev-parse HEAD)" --release-tag "$RELEASE_TAG" --output container-publication.json
+      - name: Build and test the runtime image
+        run: |
+          VERSION=$(python3 -c 'import json; print(json.load(open("container-publication.json"))["version"])')
+          docker build --build-arg VERSION="$VERSION" --build-arg REVISION="$(git rev-parse HEAD)" -t tpf-tested .
+          python3 scripts/test-container-workflow.py --image tpf-tested
+          docker save tpf-tested -o tpf-tested.tar
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tested-cli-container
+          path: |
+            tpf-tested.tar
+            container-publication.json
+          retention-days: 7
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: tested-cli-container
+      - name: Publish the tested image with repository credentials
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker load -i tpf-tested.tar
+          python3 scripts/publish-container.py
+          docker logout ghcr.io
+      - name: Require anonymous pull and test the published digest
+        run: |
+          IMAGE=$(python3 -c 'import json; print(json.load(open("container-publication.json"))["digestReference"])')
+          export DOCKER_CONFIG="$(mktemp -d)"
+          docker pull "$IMAGE" || { echo 'Package administrator: set the tpf container visibility to public, then rerun this workflow.' >&2; exit 1; }
+          python3 scripts/test-container-workflow.py --image "$IMAGE"
+          printf 'Published and verified `%s`\n' "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          cat container-publication.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: cli-container-publication
+          path: container-publication.json

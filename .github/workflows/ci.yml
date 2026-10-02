@@ -23,6 +23,14 @@ jobs:
           cache: maven
           cache-path: ${{ github.workspace }}/.m2/repository
       - name: Verify publication configuration
-        run: python3 scripts/test-publication-config.py
+        run: |
+          python3 scripts/test-publication-config.py
+          python3 scripts/test-container-config.py
       - name: Verify canonical reactor
         run: ./mvnw -B clean verify --no-transfer-progress -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository"
+      - name: Verify container distribution without publication credentials
+        run: |
+          python3 scripts/container-metadata.py --revision "$(git rev-parse HEAD)" --output container-publication.json
+          VERSION=$(python3 -c 'import json; print(json.load(open("container-publication.json"))["version"])')
+          docker build --build-arg VERSION="$VERSION" --build-arg REVISION="$(git rev-parse HEAD)" -t tpf-tested .
+          python3 scripts/test-container-workflow.py --image tpf-tested

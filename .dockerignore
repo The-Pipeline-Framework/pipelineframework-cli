@@ -1,0 +1,5 @@
+**
+!Dockerfile
+!tpf-cli/
+!tpf-cli/target/
+!tpf-cli/target/*-all.jar
