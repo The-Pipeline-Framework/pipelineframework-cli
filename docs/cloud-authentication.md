@@ -9,6 +9,12 @@ not a browser prompt. Application and environment must already exist in Cloud.
 Obtain the public OAuth CLI client ID and HTTPS issuer from your Cloud operator.
 This client has no embedded secret. Sign in explicitly:
 
+Verification URLs trust the issuer hostname by default. If your provider uses a
+different verification hostname, add `--verification-host login.example.com`
+(repeat for each exact trusted hostname). Use only provider/operator-approved
+hosts, not wildcard domains. HTTPS and rejection of user-info remain mandatory;
+HTTP on `127.0.0.1` is allowed only for local testing.
+
 ```sh
 tpf auth login --issuer https://auth.example.com --client-id client_public
 tpf auth status

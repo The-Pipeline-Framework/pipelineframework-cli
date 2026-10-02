@@ -88,6 +88,38 @@ class OAuthCredentialsTest {
         assertThrows(IllegalArgumentException.class, () -> new OAuthClient(URI.create("http://auth.example")));
         assertThrows(IllegalArgumentException.class, () -> new OAuthClient(URI.create("https://user:secret@auth.example")));
     }
+    @Test void legacyOpaqueBearerSecretsRemainCompatibleAndRedacted() {
+        String secret="registry:token";
+        var resolved=new EnvironmentCredentialResolver(Map.of("TPF_CREDENTIAL_LEGACY",secret))
+                .resolve(new CredentialReference("legacy")).orElseThrow();
+        assertEquals(secret,((Credential.Bearer)resolved).token());
+        // Docker helpers also construct Bearer from their opaque Secret field.
+        assertEquals(secret,new Credential.Bearer(secret).token());
+        assertFalse(resolved.toString().contains(secret));
+        assertThrows(IllegalArgumentException.class, () -> new Credential.Bearer(null));
+        assertThrows(IllegalArgumentException.class, () -> new Credential.Bearer("  "));
+        assertThrows(IllegalArgumentException.class, () -> new Credential.Bearer("registry:token\r\nheader"));
+    }
+    @Test void filesystemWrappersKeepTheirMessagesAndCauses() throws Exception {
+        Path blocked=temporary.resolve("blocked"); Files.createFile(blocked);
+        var unavailable=assertThrows(IllegalStateException.class,
+                () -> new UserCredentialDirectory(blocked).resolve("human"));
+        assertEquals("Credential directory is unavailable or insecure; check its mount and owner-only permissions",unavailable.getMessage());
+        assertInstanceOf(java.nio.file.FileSystemException.class,unavailable.getCause());
+
+        Path directory=temporary.resolve("credentials"); var store=new UserCredentialDirectory(directory);
+        store.resolve("human"); Files.createDirectory(directory.resolve("human.json"));
+        var rotation=assertThrows(IllegalStateException.class,
+                () -> store.save("human",URI.create("https://auth.example"),"client_public",tokens("access","refresh",600)));
+        assertEquals("Credential rotation could not be stored safely",rotation.getCause().getMessage());
+        assertNotNull(rotation.getCause().getCause());
+        var resolution=assertThrows(IllegalStateException.class, () -> store.resolve("human"));
+        assertEquals("Credentials are invalid or inaccessible; run tpf auth login",resolution.getCause().getMessage());
+        assertNotNull(resolution.getCause().getCause());
+        var removal=assertThrows(IllegalStateException.class, () -> store.logout("human"));
+        assertEquals("Credentials could not be removed safely",removal.getCause().getMessage());
+        assertNotNull(removal.getCause().getCause());
+    }
     @Test void transientRefreshFailurePreservesRotatingCredentialWithoutEchoingResponse() throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/oauth2/token", request -> {

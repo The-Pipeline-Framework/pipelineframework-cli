@@ -48,7 +48,7 @@ public final class UserCredentialDirectory {
                 try (var channel = FileChannel.open(lockPath, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
                      var ignored = channel.lock()) { return action.get(); }
             } catch (OAuthClient.OAuthFailure safe) { throw safe; }
-            catch (Exception failure) { throw new IllegalStateException("Credential directory is unavailable or insecure; check its mount and owner-only permissions"); }
+            catch (Exception failure) { throw new IllegalStateException("Credential directory is unavailable or insecure; check its mount and owner-only permissions", failure); }
         }
     }
     public void save(String profile, URI issuer, String clientId, JsonNode tokens) {
@@ -70,7 +70,7 @@ public final class UserCredentialDirectory {
             Files.write(temporary, JSON.writeValueAsBytes(value));
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (OAuthClient.OAuthFailure safe) { throw safe; }
-        catch (Exception failure) { throw new IllegalStateException("Credential rotation could not be stored safely"); }
+        catch (Exception failure) { throw new IllegalStateException("Credential rotation could not be stored safely", failure); }
         finally { if (temporary != null) try { Files.deleteIfExists(temporary); } catch (Exception ignored) {} }
     }
     public Optional<Credential> resolve(String profile) {
@@ -94,13 +94,13 @@ public final class UserCredentialDirectory {
                 }
                 return Optional.of(new Credential.Bearer(OAuthClient.text(value, "accessToken")));
             } catch (OAuthClient.OAuthFailure safe) { throw safe; }
-            catch (Exception failure) { throw new IllegalStateException("Credentials are invalid or inaccessible; run tpf auth login"); }
+            catch (Exception failure) { throw new IllegalStateException("Credentials are invalid or inaccessible; run tpf auth login", failure); }
         });
     }
     public void logout(String profile) {
         locked(profile, () -> {
             try { Path path = file(profile); if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) { verifyFile(path); Files.delete(path); } return null; }
-            catch (Exception failure) { throw new IllegalStateException("Credentials could not be removed safely"); }
+            catch (Exception failure) { throw new IllegalStateException("Credentials could not be removed safely", failure); }
         });
     }
 }

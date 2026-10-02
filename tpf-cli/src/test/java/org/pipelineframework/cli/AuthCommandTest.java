@@ -64,26 +64,55 @@ class AuthCommandTest {
             assertFalse(Files.exists(temporary.resolve("credentials/cloud.json")));
         }
     }
-    private Result login(DeviceFixture fixture) {
-        return execute("auth","login","--issuer",fixture.issuer,"--client-id","client_public", "--credential-dir",temporary.resolve("credentials").toString());
+    @Test void verificationHostRequiresExplicitTrustAndRetainsTransportAndUserInfoChecks() throws Exception {
+        try (var fixture=new DeviceFixture("success", "https://login.example/activate")) {
+            assertEquals(5,login(fixture).exit());
+            assertEquals(0,login(fixture,"LOGIN.EXAMPLE").exit());
+            assertEquals(0,execute("auth","logout","--credential-dir",temporary.resolve("credentials").toString()).exit());
+        }
+        for (String uri : java.util.List.of("https://unexpected.example/activate",
+                "https://login.example.evil/activate", "http://login.example/activate",
+                "https://user:secret@login.example/activate")) {
+            try (var fixture=new DeviceFixture("success",uri)) {
+                var result=login(fixture,"login.example");
+                assertEquals(5,result.exit());
+                assertFalse(result.output().contains("Open "));
+                assertFalse(Files.exists(temporary.resolve("credentials/cloud.json")));
+            }
+        }
+    }
+    @Test void retainedFilesystemCausesDoNotReachHumanOutput() throws Exception {
+        var blocked=temporary.resolve("secret-file-name"); Files.createFile(blocked);
+        var result=execute("auth","status","--credential-dir",blocked.toString());
+        assertEquals(5,result.exit());
+        assertFalse(result.output().contains("secret-file-name"));
+    }
+    private Result login(DeviceFixture fixture, String... trustedHosts) {
+        var arguments=new java.util.ArrayList<>(java.util.List.of("auth","login","--issuer",fixture.issuer,
+                "--client-id","client_public", "--credential-dir",temporary.resolve("credentials").toString()));
+        for (String host : trustedHosts) { arguments.add("--verification-host"); arguments.add(host); }
+        return execute(arguments.toArray(String[]::new));
     }
     private record Result(int exit, String output) {}
     private static class DeviceFixture implements AutoCloseable {
         final HttpServer server; final String issuer;
         DeviceFixture(String mode) throws Exception {
+            this(mode,null);
+        }
+        DeviceFixture(String mode, String verificationUri) throws Exception {
             server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
             issuer="http://127.0.0.1:"+server.getAddress().getPort();
             AtomicInteger count=new AtomicInteger();
             server.createContext("/oauth2/device_authorization", request -> {
                 String body=new String(request.getRequestBody().readAllBytes(),StandardCharsets.UTF_8);
                 assertTrue(body.contains("client_id=client_public")); assertFalse(body.contains("client_secret"));
-                send(request,200,"{\"device_code\":\"secret-device\",\"user_code\":\"USER-CODE\",\"verification_uri\":\""+issuer+"/activate\",\"expires_in\":"+(mode.equals("local-expiry") ? 1 : 30)+",\"interval\":1}");
+                send(request,200,"{\"device_code\":\"secret-device\",\"user_code\":\"USER-CODE\",\"verification_uri\":\""+(verificationUri==null ? issuer+"/activate" : verificationUri)+"\",\"expires_in\":"+(mode.equals("local-expiry") ? 1 : 30)+",\"interval\":1}");
             });
             server.createContext("/oauth2/token", request -> {
                 String body=new String(request.getRequestBody().readAllBytes(),StandardCharsets.UTF_8);
                 assertTrue(body.contains("device_code=secret-device")); assertFalse(body.contains("client_secret"));
                 int attempt=count.incrementAndGet();
-                if ((mode.equals("pending") || mode.equals("slow_down")) && attempt>1)
+                if (mode.equals("success") || (mode.equals("pending") || mode.equals("slow_down")) && attempt>1)
                     send(request,200,"{\"access_token\":\"secret-access\",\"refresh_token\":\"secret-refresh\",\"expires_in\":600,\"token_type\":\"Bearer\"}");
                 else send(request,400,"{\"error\":\""+(mode.equals("pending") ? "authorization_pending" : mode)+"\",\"error_description\":\"secret-error\"}");
             }); server.start();

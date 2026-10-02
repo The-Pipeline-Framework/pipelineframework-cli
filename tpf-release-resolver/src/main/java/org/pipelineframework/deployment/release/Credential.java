@@ -14,7 +14,7 @@ public sealed interface Credential permits Credential.Basic, Credential.Bearer {
     record Bearer(String token) implements Credential {
         @Override public String toString() { return "Bearer[redacted]"; }
         public Bearer {
-            if (token == null || !token.matches("[A-Za-z0-9._~+/-]+=*")) {
+            if (token == null || token.isBlank() || token.chars().anyMatch(Character::isISOControl)) {
                 throw new IllegalArgumentException("A valid bearer credential is required");
             }
         }

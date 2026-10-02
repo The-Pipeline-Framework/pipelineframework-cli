@@ -35,6 +35,12 @@ final class AuthCommand implements Runnable {
     static final class Login extends Credentials {
         @Option(names="--issuer", required=true) URI issuer;
         @Option(names="--client-id", required=true) String clientId;
+        @Option(names="--verification-host", description="Additional trusted verification host (exact hostname; repeatable)")
+        java.util.Set<String> verificationHosts = new java.util.HashSet<>();
+        boolean trustedVerificationHost(String host) {
+            return host != null && (host.equalsIgnoreCase(issuer.getHost())
+                    || verificationHosts.stream().anyMatch(host::equalsIgnoreCase));
+        }
         @Override public Integer call() {
             try {
                 var client = new OAuthClient(issuer);
@@ -43,7 +49,7 @@ final class AuthCommand implements Runnable {
                 URI verification = URI.create(OAuthClient.text(device, "verification_uri"));
                 if (!"https".equals(verification.getScheme()) && !("http".equals(verification.getScheme()) && "127.0.0.1".equals(verification.getHost())))
                     return failure();
-                if (!issuer.getHost().equals(verification.getHost()) || verification.getUserInfo() != null) return failure();
+                if (!trustedVerificationHost(verification.getHost()) || verification.getUserInfo() != null) return failure();
                 long ttl = device.path("expires_in").asLong(0);
                 int interval = device.path("interval").asInt(5);
                 if (ttl <= 0 || ttl > 3600 || interval < 1 || interval > 60) return failure();
