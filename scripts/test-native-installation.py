@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -47,7 +48,12 @@ with tempfile.TemporaryDirectory(prefix='tpf install ') as directory:
                     text=text.replace(remote,local)
                 if subprocess.run(['brew','list','--versions','tpf'],capture_output=True).returncode == 0:
                     raise SystemExit('Candidate test requires a runner without an existing tpf installation')
-                subprocess.run(['brew','tap-new','tpf-conformance/native'],check=True)
+                tap_environment={**os.environ,
+                    'GIT_AUTHOR_NAME':'TPF native conformance',
+                    'GIT_AUTHOR_EMAIL':'tpf-conformance@example.invalid',
+                    'GIT_COMMITTER_NAME':'TPF native conformance',
+                    'GIT_COMMITTER_EMAIL':'tpf-conformance@example.invalid'}
+                subprocess.run(['brew','tap-new','tpf-conformance/native'],check=True,env=tap_environment)
                 candidate_tap = True
                 tap=Path(subprocess.check_output(['brew','--repo','tpf-conformance/native'],text=True).strip())
                 formula=tap/'Formula/tpf.rb';formula.write_text(text)
