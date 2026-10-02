@@ -15,6 +15,10 @@ If both exist, specify the intended file with `--release`.
 Deployment configuration belongs in `tpf-deploy.yaml`. Release identity, artifact URIs and digests remain identical
 when the same descriptor is promoted between environments.
 
+For Cloud deployments, see [Cloud authentication](docs/cloud-authentication.md) for explicit
+human device login, persistent credential mounts and non-interactive CI credential sources.
+`deploy` never prompts for login and authentication never changes the Release.
+
 The first supported installation is the public Java 21 container image at
 `ghcr.io/the-pipeline-framework/tpf` (initially `linux/amd64`). See
 [Install the CLI](https://pipelineframework.org/deploy/cli-installation) for Docker/Podman commands,
