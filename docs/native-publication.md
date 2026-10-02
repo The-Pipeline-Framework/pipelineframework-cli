@@ -32,7 +32,8 @@ The macOS binary is unsigned initially; Apple Developer signing/notarization is 
 Rerun failed publication jobs on the original workflow run; downloaded build artifacts retain the exact tested
 identity and bytes. Never rerun a complete build to silently replace an existing release. Archive identity checks
 reject source/version/platform mismatches, invalid executable permissions and failed conformance reports.
-JReleaser permits an interrupted release to finish uploading the same assets and formula. Investigate failing
+JReleaser refuses to overwrite an existing release. If publication created the release before failing, preserve its
+assets and resume only the unfinished steps with the original tested artifacts; do not enable overwrite. Investigate failing
 post-publication checks before advertising the release as installable. Build reports retain startup timings and
 binary/archive sizes; the release report records JReleaser output properties.
 

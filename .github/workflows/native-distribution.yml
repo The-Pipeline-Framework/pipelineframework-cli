@@ -117,7 +117,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
-      checks: read
+      actions: read
       statuses: read
     environment: native-release
     env:

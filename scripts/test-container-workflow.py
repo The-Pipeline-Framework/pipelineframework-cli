@@ -103,6 +103,7 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
     environment.update(HOME=str(home), DOCKER_CONFIG=str(resolver),
                        TPF_CREDENTIAL_DIRECTORY=str(home / ".tpf" / "credentials"))
     if args.executable: environment["PATH"] = str(helpers)  # no Java or Docker needed
+    else: environment["PATH"] = str(helpers) + os.pathsep + environment.get("PATH", os.defpath)
 
     def installed(work, command, extra=None, properties=()):
         env = dict(environment); env.update(extra or {})

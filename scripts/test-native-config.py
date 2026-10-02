@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import json
-import runpy
 ROOT=Path(__file__).resolve().parents[1]
 
 def load(name):
@@ -45,11 +44,37 @@ class NativePolicyTest(unittest.TestCase):
         self.assertIn("startsWith(github.ref, 'refs/tags/v')",publish)
 
     def test_compatibility_success_cannot_override_failed_owner_verification(self):
+        gate=load('wait-native-compatibility')
         coordinator=json.dumps({'statuses':[{'context':'tpf/system-tests','state':'success'}]}).encode()
-        owner=json.dumps({'check_runs':[{'name':'verify','app':{'slug':'github-actions'},
-            'status':'completed','conclusion':'failure'}]}).encode()
-        with patch('sys.argv',['wait-native-compatibility.py','a'*40]), patch('subprocess.check_output',side_effect=[coordinator,owner]):
+        runs=json.dumps([{'workflow_runs':[dict(id=42,run_number=1,run_attempt=2,
+            path='.github/workflows/ci.yml',head_sha='a'*40)]}]).encode()
+        owner=json.dumps([{'jobs':[{'name':'verify','status':'completed','conclusion':'failure'}]}]).encode()
+        with patch('subprocess.check_output',side_effect=[coordinator,runs,owner]) as api:
             with self.assertRaisesRegex(SystemExit,'Owner verification rejected'):
-                runpy.run_path(str(ROOT/'scripts/wait-native-compatibility.py'),run_name='__main__')
+                gate.wait('a'*40)
+            self.assertIn('/attempts/2/jobs?per_page=100',api.call_args.args[0][-1])
+
+    def test_only_expected_workflow_and_revision_can_satisfy_owner_gate(self):
+        gate=load('wait-native-compatibility')
+        runs=[{'workflow_runs':[
+            dict(id=1,run_number=1,run_attempt=1,path='.github/workflows/other.yml',head_sha='a'*40),
+            dict(id=2,run_number=2,run_attempt=1,path='.github/workflows/ci.yml',head_sha='b'*40)]}]
+        with patch('subprocess.check_output',return_value=json.dumps(runs).encode()) as api:
+            self.assertFalse(gate.owner_verification('a'*40))
+            self.assertEqual(1,api.call_count)
+
+    def test_latest_workflow_attempt_and_paginated_verify_job_are_used(self):
+        gate=load('wait-native-compatibility')
+        runs=[{'workflow_runs':[dict(id=20,run_number=2,run_attempt=3,
+            path='.github/workflows/ci.yml',head_sha='a'*40)]},
+            {'workflow_runs':[dict(id=10,run_number=1,run_attempt=1,
+            path='.github/workflows/ci.yml',head_sha='a'*40)]}]
+        jobs=[{'jobs':[dict(name='other',status='completed',conclusion='success')]},
+              {'jobs':[dict(name='verify',status='completed',conclusion='success')]}]
+        with patch('subprocess.check_output',side_effect=[json.dumps(runs).encode(),json.dumps(jobs).encode()]) as api:
+            self.assertTrue(gate.owner_verification('a'*40))
+            self.assertIn('/runs/20/attempts/3/jobs?per_page=100',api.call_args.args[0][-1])
+            for call in api.call_args_list:
+                self.assertIn('--paginate',call.args[0])
 
 if __name__=='__main__': unittest.main()
