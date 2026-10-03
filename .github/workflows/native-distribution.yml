@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  schedule:
+    # Same nightly slot as Maven snapshots; both validate independently.
+    - cron: '47 20 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -174,7 +177,7 @@ jobs:
 
   publish-latest:
     needs: [identity, build, prepare, install-candidate]
-    if: github.repository == 'The-Pipeline-Framework/pipelineframework-cli' && github.ref == 'refs/heads/main' && endsWith(needs.identity.outputs.version, '-SNAPSHOT')
+    if: github.repository == 'The-Pipeline-Framework/pipelineframework-cli' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && endsWith(needs.identity.outputs.version, '-SNAPSHOT')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:

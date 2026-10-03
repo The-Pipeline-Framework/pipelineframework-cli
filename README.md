@@ -35,8 +35,9 @@ native version before installing. The tap is populated only after all platform b
 a source checkout or a GHCR image is not a native release. Checksummed ZIP downloads provide a manual alternative.
 The Linux baseline is Ubuntu 24.04 or a compatible glibc system. Intel macOS, Windows and Alpine are not supported
 native targets. macOS downloads are initially unsigned; Homebrew is recommended.
-Snapshot archives are published as the moving [`latest` prerelease](https://github.com/The-Pipeline-Framework/pipelineframework-cli/releases/tag/latest)
-after trusted main passes all conformance and compatibility checks. Their executable version retains `-SNAPSHOT`;
+Nightly snapshot archives are published as the moving [`latest` prerelease](https://github.com/The-Pipeline-Framework/pipelineframework-cli/releases/tag/latest)
+from trusted main after all conformance and compatibility checks pass. Manual snapshot publication is also available;
+main pushes validate without publishing snapshots. Their executable version retains `-SNAPSHOT`;
 checksums and metadata identify the exact source commit. Download archives from that release and follow the archive
 installation guide; snapshot publication needs only `GITHUB_TOKEN`. Homebrew remains a stable-release channel.
 See [Install the CLI](https://pipelineframework.org/deploy/cli-installation) for archive installation and first use.

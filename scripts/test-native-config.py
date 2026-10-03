@@ -78,6 +78,8 @@ class NativePolicyTest(unittest.TestCase):
         latest=workflow.split('\n  publish-latest:\n')[1].split('\n  install-latest:')[0]
         self.assertIn("github.ref == 'refs/heads/main'",latest)
         self.assertIn("github.repository == 'The-Pipeline-Framework/pipelineframework-cli'",latest)
+        self.assertIn("(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",latest)
+        self.assertIn("- cron: '47 20 * * *'",workflow)
         self.assertIn("endsWith(needs.identity.outputs.version, '-SNAPSHOT')",latest)
         self.assertIn('needs: [identity, build, prepare, install-candidate]',latest)
         self.assertIn('wait-native-compatibility.py',latest)

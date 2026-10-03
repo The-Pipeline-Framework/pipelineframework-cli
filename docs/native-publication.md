@@ -7,6 +7,10 @@ outside this distribution.
 
 ## Snapshot latest
 
+The nightly schedule runs at 20:47 UTC, alongside the existing Maven Central snapshot schedule. Both workflows
+validate independently; the native workflow does not require a stable version or Maven publication credentials.
+Manual runs on main can also publish snapshots; main pushes and PRs validate without snapshot publication.
+
 A `-SNAPSHOT` reactor version on trusted main is eligible for the moving `latest` GitHub prerelease after all native
 conformance, candidate installation, owner verification and exact-source Compatibility Set gates pass. The same
 checksummed archives keep their original version, commit and toolchain metadata; no release-like staging artifacts
@@ -14,7 +18,7 @@ are published. Public archive installations are then exercised on all three plat
 
 Snapshots use only the CLI repository's `GITHUB_TOKEN`; Homebrew App provisioning does not block them. The standard
 JReleaser Homebrew packager excludes snapshots, so Homebrew stays a stable-release channel. `latest` is deliberately
-mutable: JReleaser replaces that snapshot prerelease on each passing main publication. Retries use the original
+mutable: JReleaser replaces that snapshot prerelease on each passing nightly or manual main publication. Retries use the original
 artifacts, and stale runs cannot replace a newer main commit. Download and preserve the ZIP, metadata and checksum
 for repeatable CI; do not treat the moving URL as an immutable version.
 
