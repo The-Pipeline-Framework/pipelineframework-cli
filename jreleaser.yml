@@ -7,6 +7,8 @@ project:
   authors: [Mariano E. Barcia]
   license: Apache-2.0
   inceptionYear: '2026'
+  snapshot:
+    label: latest
   stereotype: CLI
   languages:
     java:

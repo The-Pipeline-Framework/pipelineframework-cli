@@ -12,18 +12,20 @@ import zipfile
 
 parser=argparse.ArgumentParser();parser.add_argument('--platform',required=True);parser.add_argument('--version',required=True)
 parser.add_argument('--published',action='store_true');parser.add_argument('--homebrew',action='store_true')
-parser.add_argument('--formula',type=Path);args=parser.parse_args()
+parser.add_argument('--revision');parser.add_argument('--tag');parser.add_argument('--formula',type=Path);args=parser.parse_args()
 root=Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='tpf install ') as directory:
     work=Path(directory).resolve();name=f'tpf-{args.version}-{args.platform}'
     archive=work/(name+'.zip')
     if args.published:
-        base=f'https://github.com/The-Pipeline-Framework/pipelineframework-cli/releases/download/v{args.version}/'
+        base=f"https://github.com/The-Pipeline-Framework/pipelineframework-cli/releases/download/{args.tag or 'v'+args.version}/"
         urllib.request.urlretrieve(base+archive.name,archive)
         metadata=json.loads(urllib.request.urlopen(base+name+'.json').read())
     else:
         source=root/'target/distributions'/archive.name
         archive.write_bytes(source.read_bytes());metadata=json.loads(source.with_suffix('.json').read_text())
+    if metadata['version'] != args.version or metadata['platform'] != args.platform: raise SystemExit('Downloaded archive identity mismatch')
+    if args.revision and metadata['revision'] != args.revision: raise SystemExit('Downloaded archive revision mismatch')
     if hashlib.sha256(archive.read_bytes()).hexdigest()!=metadata['sha256']: raise SystemExit('Downloaded archive digest mismatch')
     with zipfile.ZipFile(archive) as source:
         for item in source.infolist():

@@ -58,6 +58,37 @@ class NativePolicyTest(unittest.TestCase):
         with patch.object(identity.ET,'parse',return_value=ET.ElementTree(ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><version>1.2.3-SNAPSHOT</version></project>'))), patch.object(identity.subprocess,'check_output',return_value='a'*40):
             with self.assertRaisesRegex(ValueError,'non-SNAPSHOT'): identity.identity('v1.2.3')
 
+    def test_latest_requires_current_main_snapshot(self):
+        gate=load('check-native-release')
+        for version,main,tag,allowed in (
+            ('1.2.3-SNAPSHOT','a'*40,'',True),
+            ('1.2.3-SNAPSHOT','b'*40,'',False),
+            ('1.2.3','a'*40,'',False),
+            ('1.2.3-SNAPSHOT','a'*40,'v1.2.3-SNAPSHOT',False)):
+            with self.subTest(version=version,main=main,tag=tag):
+                pom=ET.ElementTree(ET.fromstring('<project xmlns="http://maven.apache.org/POM/4.0.0"><version>'+version+'</version></project>'))
+                with patch.object(gate.ET,'parse',return_value=pom), patch.object(gate.subprocess,'check_output',side_effect=['a'*40,main+' refs/heads/main']):
+                    if allowed:
+                        self.assertEqual((version,'a'*40),gate.identity(latest=True))
+                    else:
+                        with self.assertRaises(ValueError): gate.identity(tag,latest=True)
+
+    def test_latest_archives_have_no_tap_credentials_and_keep_all_gates(self):
+        workflow=(ROOT/'.github/workflows/native-distribution.yml').read_text()
+        latest=workflow.split('\n  publish-latest:\n')[1].split('\n  install-latest:')[0]
+        self.assertIn("github.ref == 'refs/heads/main'",latest)
+        self.assertIn("github.repository == 'The-Pipeline-Framework/pipelineframework-cli'",latest)
+        self.assertIn("(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",latest)
+        self.assertIn("- cron: '47 20 * * *'",workflow)
+        self.assertIn("endsWith(needs.identity.outputs.version, '-SNAPSHOT')",latest)
+        self.assertIn('needs: [identity, build, prepare, install-candidate]',latest)
+        self.assertIn('wait-native-compatibility.py',latest)
+        self.assertIn('--latest --artifacts target/distributions',latest)
+        self.assertIn('JRELEASER_TAG_NAME: latest',latest)
+        self.assertNotIn('secrets.',latest)
+        self.assertNotIn('tap-token',latest)
+        self.assertIn("--tag latest --revision '${{ needs.identity.outputs.revision }}' --published",workflow)
+
     def test_publication_credentials_are_separate_from_builds(self):
         workflow=(ROOT/'.github/workflows/native-distribution.yml').read_text()
         build,publish=workflow.split('\n  publish:\n')
