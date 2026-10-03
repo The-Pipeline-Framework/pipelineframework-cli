@@ -172,6 +172,74 @@ jobs:
           name: native-release-report
           path: out/jreleaser/output.properties
 
+  publish-latest:
+    needs: [identity, build, prepare, install-candidate]
+    if: github.repository == 'The-Pipeline-Framework/pipelineframework-cli' && github.ref == 'refs/heads/main' && endsWith(needs.identity.outputs.version, '-SNAPSHOT')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+      statuses: read
+    env:
+      JRELEASER_PROJECT_VERSION: ${{ needs.identity.outputs.version }}
+      JRELEASER_TAG_NAME: latest
+      JRELEASER_BRANCH: main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact-source compatibility result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/wait-native-compatibility.py '${{ needs.identity.outputs.revision }}'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: target/distributions
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Reject stale main runs and require tested snapshot identities
+        run: python3 scripts/check-native-release.py --latest --artifacts target/distributions
+      - name: Replace the latest snapshot prerelease with tested archives
+        uses: jreleaser/release-action@97b5e2f0e845de2fe1dbbdf451ac6a21233fafff
+        with:
+          version: '1.26.0'
+          setup-java: false
+          arguments: full-release
+        env:
+          JRELEASER_GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-latest-report
+          path: out/jreleaser/output.properties
+
+  install-latest:
+    needs: [identity, publish-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: osx-aarch_64
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Download and exercise the public latest archive
+        run: python3 scripts/test-native-installation.py --platform '${{ matrix.platform }}' --version '${{ needs.identity.outputs.version }}' --tag latest --revision '${{ needs.identity.outputs.revision }}' --published
+
   install-candidate:
     needs: [identity, prepare]
     strategy:

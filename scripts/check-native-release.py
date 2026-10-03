@@ -11,10 +11,14 @@ from zipfile import ZipFile
 PLATFORMS = ("osx-aarch_64", "linux-x86_64", "linux-aarch_64")
 
 
-def identity(tag=""):
+def identity(tag="", latest=False):
     version = ET.parse("pom.xml").getroot().findtext("{http://maven.apache.org/POM/4.0.0}version")
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-SNAPSHOT)?", version): raise ValueError("Invalid release version")
+    if latest:
+        if tag or not version.endswith("-SNAPSHOT"): raise ValueError("latest requires an untagged SNAPSHOT reactor version")
+        main = subprocess.check_output(["git", "ls-remote", "origin", "refs/heads/main"], text=True).split()[0]
+        if revision != main: raise ValueError("latest requires the current trusted main commit")
     if tag:
         if version.endswith("-SNAPSHOT") or tag != "v" + version: raise ValueError("Tag must match a non-SNAPSHOT reactor version")
         subprocess.run(["git", "merge-base", "--is-ancestor", "HEAD", "origin/main"], check=True)
@@ -35,7 +39,7 @@ def check(directory, version, revision):
         if metadata['conformance']['version'] != 'tpf ' + version: raise ValueError("Conformance version mismatch")
 
 if __name__ == '__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--tag',default='');parser.add_argument('--artifacts',type=Path)
-    args=parser.parse_args();version,revision=identity(args.tag)
+    parser=argparse.ArgumentParser();parser.add_argument('--tag',default='');parser.add_argument('--artifacts',type=Path);parser.add_argument('--latest',action='store_true')
+    args=parser.parse_args();version,revision=identity(args.tag,args.latest)
     if args.artifacts: check(args.artifacts,version,revision)
     print('version='+version);print('revision='+revision)

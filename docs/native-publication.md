@@ -5,6 +5,19 @@ jobs have read-only repository permission and no publication secrets. Each archi
 revision, pinned Mandrel/Java version, checksums and conformance/timing report. Windows, Intel macOS and Alpine are
 outside this distribution.
 
+## Snapshot latest
+
+A `-SNAPSHOT` reactor version on trusted main is eligible for the moving `latest` GitHub prerelease after all native
+conformance, candidate installation, owner verification and exact-source Compatibility Set gates pass. The same
+checksummed archives keep their original version, commit and toolchain metadata; no release-like staging artifacts
+are published. Public archive installations are then exercised on all three platforms.
+
+Snapshots use only the CLI repository's `GITHUB_TOKEN`; Homebrew App provisioning does not block them. The standard
+JReleaser Homebrew packager excludes snapshots, so Homebrew stays a stable-release channel. `latest` is deliberately
+mutable: JReleaser replaces that snapshot prerelease on each passing main publication. Retries use the original
+artifacts, and stale runs cannot replace a newer main commit. Download and preserve the ZIP, metadata and checksum
+for repeatable CI; do not treat the moving URL as an immutable version.
+
 ## One-time Homebrew setup
 
 The public `The-Pipeline-Framework/homebrew-tap` repository is the publication destination. Create a dedicated GitHub
@@ -32,7 +45,7 @@ The macOS binary is unsigned initially; Apple Developer signing/notarization is 
 Rerun failed publication jobs on the original workflow run; downloaded build artifacts retain the exact tested
 identity and bytes. Never rerun a complete build to silently replace an existing release. Archive identity checks
 reject source/version/platform mismatches, invalid executable permissions and failed conformance reports.
-JReleaser refuses to overwrite an existing release. If publication created the release before failing, preserve its
+JReleaser refuses to overwrite an existing stable version release. If publication created the release before failing, preserve its
 assets and resume only the unfinished steps with the original tested artifacts; do not enable overwrite. Investigate failing
 post-publication checks before advertising the release as installable. Build reports retain startup timings and
 binary/archive sizes; the release report records JReleaser output properties.
