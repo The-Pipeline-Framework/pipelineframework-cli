@@ -42,7 +42,7 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <tpf.version>26.10.1-SNAPSHOT</tpf.version>
         <jackson.version>2.22.2</jackson.version>
         <maven.resolver.version>1.9.27</maven.resolver.version>
@@ -90,7 +90,7 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.14.1</version>
-                    <configuration><release>21</release></configuration>
+                    <configuration><release>25</release></configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-noble
 ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.source="https://github.com/The-Pipeline-Framework/pipelineframework-cli" \

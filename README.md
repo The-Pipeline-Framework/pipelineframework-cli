@@ -19,12 +19,28 @@ For Cloud deployments, see [Cloud authentication](docs/cloud-authentication.md) 
 human device login, persistent credential mounts and non-interactive CI credential sources.
 `deploy` never prompts for login and authentication never changes the Release.
 
-The first supported installation is the public Java 21 container image at
-`ghcr.io/the-pipeline-framework/tpf` (initially `linux/amd64`). See
-[Install the CLI](https://pipelineframework.org/deploy/cli-installation) for Docker/Podman commands,
-the shell wrapper, resolver mounts, container paths and digest-pinned CI examples.
-The image becomes installable when the trusted publication workflow passes its anonymous-pull and
-published-digest conformance checks. `main` is a development tag; use a version tag or digest for reproducibility.
+## Install
+
+Native releases run directly on macOS Apple Silicon and Linux x64/ARM64, without Java or Docker.
+Homebrew is the recommended installation for published native releases:
+
+```sh
+brew install The-Pipeline-Framework/tap/tpf
+tpf --version
+tpf release verify --help
+```
+
+Check [GitHub Releases](https://github.com/The-Pipeline-Framework/pipelineframework-cli/releases) for an available
+native version before installing. The tap is populated only after all platform builds and conformance checks pass;
+a source checkout or a GHCR image is not a native release. Checksummed ZIP downloads provide a manual alternative.
+The Linux baseline is Ubuntu 24.04 or a compatible glibc system. Intel macOS, Windows and Alpine are not supported
+native targets. macOS downloads are initially unsigned; Homebrew is recommended.
+See [Install the CLI](https://pipelineframework.org/deploy/cli-installation) for archive installation and first use.
+
+The public `ghcr.io/the-pipeline-framework/tpf` container remains a secondary option. It supplies its own Java 25
+runtime and currently targets `linux/amd64`. Containers need mounts to read host files; a directly installed `tpf`
+uses the current directory and host paths normally. Use the full GHCR image name: Docker's short `tpf` name means
+`tpf:latest` in its default registry. `main` is a development tag; pin a reported digest for reproducible CI.
 
 Maven produces the Release; the CLI consumes it:
 
@@ -43,14 +59,16 @@ The Cloud target requires the private external Cloud API to be available, an exi
 Environment, and an authorised bearer credential. Its current success state is `REGISTERED`;
 physical deployment, runtime verification and activation remain `NOT_REQUESTED`.
 
-Build the CLI from source with Java 21:
+## Build
+
+Build the CLI from source with Java 25:
 
 ```bash
 ./mvnw verify -Dmaven.repo.local="$PWD/.m2/repository"
 ```
 
-The `tpf-cli` module produces an executable `-all.jar` and ZIP/TAR distributions containing POSIX and Windows
-launchers for development. These build outputs are not a claim of supported native downloads.
+The `tpf-cli` module retains its executable `-all.jar` and JVM development archives. Native builds use the same reactor
+and compiled source, with no Maven profile selection.
 
 The ordinary test suite has no container dependency. Run the real OCI registry conformance test explicitly on a
 machine with Podman:
@@ -75,7 +93,7 @@ inside the CLI image. A separate Python container supplies controlled protocol f
 private Cloud deployment test. The fixture container is removed after the test.
 
 `publish-container.yml` runs only for trusted `main` pushes/manual runs and published non-prerelease tags whose
-commits are merged into `main` and whose names match the non-snapshot Maven version. An unprivileged Java 21 job
+commits are merged into `main` and whose names match the non-snapshot Maven version. An unprivileged Java 25 job
 verifies and tests the image. A separate job publishes that exact image using only repository `GITHUB_TOKEN`
 with `packages: write`, reports `container-publication.json` and the image digest in its summary, then pulls
 anonymously and repeats the test against the published digest. No MokapotLabs PAT belongs in this workflow.
@@ -90,8 +108,32 @@ the normal association), set visibility to **public**, and rerun a failed anonym
 package must grant this repository write access. The workflow fails until an unauthenticated pull works.
 See [GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
-Native downloads and JReleaser are the next distribution slice. This plain-Java CLI needs its own
+Native downloads use this CLI's own
 [Native Build Tools](https://graalvm.github.io/native-build-tools/latest/maven-plugin)/Mandrel configuration
-and reachability checks. Before [JReleaser distribution packaging](https://jreleaser.org/guide/latest/reference/distributions.html),
-a native-image conformance build must pass JSON serialisation, Maven Resolver, OCI and authentication paths.
-A Quarkus container-native workflow is prior art, not conformance evidence for this CLI.
+and reviewed reachability metadata. [JReleaser distribution packaging](https://jreleaser.org/guide/latest/reference/distributions.html)
+is gated by native conformance for JSON serialisation, Maven Resolver, OCI and authentication paths on every target.
+
+## Native validation and release
+
+Use the checksum-pinned Mandrel Java 25 toolchain:
+
+```sh
+export JAVA_HOME="$(python3 scripts/setup-mandrel.py "$PWD/target/toolchain")"
+export PATH="$JAVA_HOME/bin:$PATH"
+./mvnw clean verify -Dmaven.repo.local="$PWD/.m2/repository"
+# Warm only this worktree's dependency cache for the standalone native plugin invocation.
+./mvnw install -DskipTests -Dgpg.skip -Dmaven.repo.local="$PWD/.m2/repository"
+./mvnw -pl tpf-cli package native:compile-no-fork -DskipTests -Dmaven.repo.local="$PWD/.m2/repository"
+python3 scripts/test-container-workflow.py --executable tpf-cli/target/tpf --report target/native-conformance.json
+```
+
+The shared fixture suite also accepts `--java-jar` and `--image`. Native execution removes Java and Docker from the
+client's search path. It proves JSON/YAML, Maven/OCI/file resolution, credential helpers, human device login and refresh,
+CI service credentials, TLS verification, authentication failures and unchanged descriptor submission. Private Cloud
+and identity APIs still need to exist for actual deployment.
+
+Native Build Tools 1.1.13 compiles the plain-Java CLI using Mandrel 25.0.4.1-Final. Reviewed reflection/resource metadata
+lives under `META-INF/native-image`; JVM fallback is disabled. JReleaser 1.26.0 packages tested platform-specific
+`BINARY` archives and Homebrew formulae. Publication is not bound to Maven `verify` or `deploy`.
+
+See [native publication setup](docs/native-publication.md) for the dedicated GitHub App, release checks and retry rules.

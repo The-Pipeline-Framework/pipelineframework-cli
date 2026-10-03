@@ -12,7 +12,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.Model.CommandSpec;
 
-@Command(name = "verify", description = "Resolve and verify a Release from pipeline-release.json.")
+@Command(mixinStandardHelpOptions = true, name = "verify", description = "Resolve and verify a Release from pipeline-release.json.")
 final class ReleaseVerifyCommand implements Callable<Integer> {
     @Option(names = "--release") private Path release;
     @Option(names = "--config", defaultValue = "tpf-deploy.yaml") private Path config;

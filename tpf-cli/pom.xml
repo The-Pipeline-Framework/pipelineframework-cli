@@ -3,13 +3,25 @@
   <parent><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-cli-parent</artifactId><version>26.10.1-SNAPSHOT</version></parent>
   <artifactId>tpf-cli</artifactId>
   <dependencies>
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-nop</artifactId><version>1.7.36</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-core</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-target-local</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-target-cloud</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>info.picocli</groupId><artifactId>picocli</artifactId><version>${picocli.version}</version></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
   </dependencies>
-  <build><plugins>
+  <build>
+    <resources><resource><directory>src/main/resources</directory><filtering>true</filtering><includes><include>tpf-build.properties</include></includes></resource>
+      <resource><directory>src/main/resources</directory><filtering>false</filtering><excludes><exclude>tpf-build.properties</exclude></excludes></resource></resources>
+    <plugins>
+    <plugin>
+      <groupId>org.graalvm.buildtools</groupId><artifactId>native-maven-plugin</artifactId><version>1.1.13</version>
+      <configuration>
+        <mainClass>org.pipelineframework.cli.TpfCli</mainClass><imageName>tpf</imageName><fallback>false</fallback>
+        <metadataRepository><enabled>true</enabled></metadataRepository>
+        <buildArgs><buildArg>--no-fallback</buildArg><buildArg>--enable-url-protocols=http,https</buildArg></buildArgs>
+      </configuration>
+    </plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>3.6.1</version><executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
       <createDependencyReducedPom>false</createDependencyReducedPom>
       <shadedArtifactAttached>true</shadedArtifactAttached><shadedClassifierName>all</shadedClassifierName>

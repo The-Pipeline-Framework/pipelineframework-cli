@@ -16,7 +16,7 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.Model.CommandSpec;
 
-@Command(name = "deploy", description = "Deploy an already-produced immutable Release.")
+@Command(mixinStandardHelpOptions = true, name = "deploy", description = "Deploy an already-produced immutable Release.")
 final class DeployCommand implements Callable<Integer> {
     @Parameters(index = "0", description = "Named environment from tpf-deploy.yaml") private String environment;
     @Option(names = "--release") private Path release;

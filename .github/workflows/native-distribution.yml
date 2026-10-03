@@ -1,0 +1,240 @@
+name: Native CLI distribution
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-cli-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  identity:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      revision: ${{ steps.identity.outputs.revision }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: identity
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: python3 scripts/check-native-release.py --tag "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+  build:
+    needs: identity
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: osx-aarch_64
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - name: Install native prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y g++ zlib1g-dev libfreetype6-dev
+      - name: Install checksum-pinned Mandrel Java 25
+        run: python3 scripts/setup-mandrel.py "$RUNNER_TEMP/mandrel"
+      - name: Verify canonical reactor and warm isolated artifacts
+        run: |
+          ./mvnw -B clean verify --no-transfer-progress -Dmaven.repo.local="$PWD/.m2/repository"
+          python3 scripts/test-publication-config.py
+          python3 scripts/test-native-config.py
+          ./mvnw -B install -DskipTests -Dgpg.skip --no-transfer-progress -Dmaven.repo.local="$PWD/.m2/repository"
+      - name: Conformance on Java 25
+        run: python3 scripts/test-container-workflow.py --java "$JAVA_HOME/bin/java" --java-jar "tpf-cli/target/tpf-cli-${{ needs.identity.outputs.version }}-all.jar" --report target/jvm-conformance.json
+      - name: Compile native executable without JVM fallback
+        run: ./mvnw -B -pl tpf-cli package native:compile-no-fork -DskipTests --no-transfer-progress -Dmaven.repo.local="$PWD/.m2/repository"
+      - name: Conformance without Java or Docker
+        run: python3 scripts/test-container-workflow.py --executable tpf-cli/target/tpf --report target/native-conformance.json
+      - name: Package the tested executable
+        run: python3 scripts/package-native.py --executable tpf-cli/target/tpf --platform '${{ matrix.platform }}' --revision '${{ needs.identity.outputs.revision }}' --report target/native-conformance.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ matrix.platform }}
+          path: target/distributions/*
+          if-no-files-found: error
+          retention-days: 30
+  prepare:
+    needs: [identity, build]
+    runs-on: ubuntu-24.04
+    env:
+      JRELEASER_PROJECT_VERSION: ${{ needs.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: target/distributions
+      - name: Require exact tested artifact identities
+        run: python3 scripts/check-native-release.py --artifacts target/distributions
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Stage release-like candidates for packager validation
+        run: python3 scripts/prepare-native-dryrun.py
+      - name: Generate package definitions without publication
+        uses: jreleaser/release-action@97b5e2f0e845de2fe1dbbdf451ac6a21233fafff
+        with:
+          version: '1.26.0'
+          setup-java: false
+          arguments: prepare
+        env:
+          JRELEASER_GITHUB_TOKEN: validation-only
+      - name: Validate generated formula
+        run: python3 scripts/check-homebrew.py out/jreleaser
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: prepared-homebrew
+          path: |
+            out/jreleaser/prepare/**/tpf.rb
+            target/distributions/*
+          if-no-files-found: error
+  publish:
+    needs: [identity, build, prepare, install-candidate]
+    if: github.repository == 'The-Pipeline-Framework/pipelineframework-cli' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+      statuses: read
+    environment: native-release
+    env:
+      JRELEASER_PROJECT_VERSION: ${{ needs.identity.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require trusted source and package App prerequisites
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          APP_ID: ${{ vars.HOMEBREW_APP_ID }}
+          APP_KEY: ${{ secrets.HOMEBREW_APP_PRIVATE_KEY }}
+        run: |
+          python3 scripts/check-native-release.py --tag "$RELEASE_TAG"
+          test -n "$APP_ID" && test -n "$APP_KEY"
+      - name: Require exact-source compatibility result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/wait-native-compatibility.py '${{ needs.identity.outputs.revision }}'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: target/distributions
+      - run: python3 scripts/check-native-release.py --tag '${{ github.ref_name }}' --artifacts target/distributions
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - id: tap-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.HOMEBREW_APP_ID }}
+          private-key: ${{ secrets.HOMEBREW_APP_PRIVATE_KEY }}
+          owner: The-Pipeline-Framework
+          repositories: homebrew-tap
+          permission-contents: write
+      - name: Publish tested archives and Homebrew formula
+        uses: jreleaser/release-action@97b5e2f0e845de2fe1dbbdf451ac6a21233fafff
+        with:
+          version: '1.26.0'
+          setup-java: false
+          arguments: full-release
+        env:
+          JRELEASER_GITHUB_TOKEN: ${{ github.token }}
+          JRELEASER_HOMEBREW_GITHUB_TOKEN: ${{ steps.tap-token.outputs.token }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-release-report
+          path: out/jreleaser/output.properties
+
+  install-candidate:
+    needs: [identity, prepare]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: osx-aarch_64
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: prepared-homebrew
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - run: sh scripts/setup-homebrew.sh
+      - name: Install and exercise candidate archive and generated formula
+        run: |
+          VERSION=$(python3 scripts/prepare-native-dryrun.py)
+          FORMULA=$(python3 scripts/check-homebrew.py out/jreleaser | tail -1)
+          python3 scripts/test-native-installation.py --platform '${{ matrix.platform }}' --version "$VERSION"
+          python3 scripts/test-native-installation.py --platform '${{ matrix.platform }}' --version "$VERSION" --homebrew --formula "$FORMULA"
+
+  install-published:
+    needs: [identity, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: osx-aarch_64
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - run: sh scripts/setup-homebrew.sh
+      - name: Download and exercise public archive and Homebrew installation
+        run: |
+          python3 scripts/test-native-installation.py --platform '${{ matrix.platform }}' --version '${{ needs.identity.outputs.version }}' --published
+          python3 scripts/test-native-installation.py --platform '${{ matrix.platform }}' --version '${{ needs.identity.outputs.version }}' --published --homebrew
