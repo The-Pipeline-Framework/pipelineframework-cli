@@ -123,8 +123,8 @@ The public `The-Pipeline-Framework/homebrew-tap` repository is the publication d
    Discover the actual App ID from the installed App instead of copying a placeholder:
 
 ```sh
-TPF_TAP_APP_ID=$(gh api orgs/The-Pipeline-Framework/installations \
-  --jq '.installations[] | select(.app_slug == "tpf-homebrew-tap-app") | .app_id')
+TPF_TAP_APP_ID=$(gh api --paginate --slurp orgs/The-Pipeline-Framework/installations \
+  --jq '[.[].installations[] | select(.app_slug == "tpf-homebrew-tap-app") | .app_id] | unique | .[]')
 case "$TPF_TAP_APP_ID" in
   ''|*[!0-9]*) echo "Expected one installed App with a numeric App ID" >&2; exit 1 ;;
 esac
