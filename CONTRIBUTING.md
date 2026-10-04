@@ -108,14 +108,76 @@ for repeatable CI; do not treat the moving URL as an immutable version.
 
 ### One-time Homebrew setup
 
-The public `The-Pipeline-Framework/homebrew-tap` repository is the publication destination. Create a dedicated GitHub
-App with **Contents: read and write**, and install it on **only homebrew-tap**. Set `HOMEBREW_APP_ID` as a repository
-variable and `HOMEBREW_APP_PRIVATE_KEY` as a repository/environment secret on pipelineframework-cli. The trusted
-`native-release` job mints a token restricted to the tap and revokes it when finished. No PAT is required.
-The CLI repository's `GITHUB_TOKEN` publishes GitHub release assets, not cross-repository formula commits.
+The public `The-Pipeline-Framework/homebrew-tap` repository is the publication destination. Its dedicated App is
+`tpf-homebrew-tap-app`. Registration, installation, and credentials are separate prerequisites:
 
-Ensure the tap's default branch is `main`. Configure the `native-release` GitHub environment to allow protected version
-tags. Do not expose App credentials to build jobs or use a broadly installed Cloud/coordinator App for this purpose.
+1. Register a private App under the organisation in
+   [organisation developer settings](https://github.com/organizations/The-Pipeline-Framework/settings/apps/new).
+   Give it **Repository contents: read and write**. Metadata read access is implicit. Disable webhooks and leave
+   other optional permissions unset; this App only commits formulae.
+2. Install it on **selected repositories**, selecting **only homebrew-tap**. Registering an App does not install it.
+   Do not reuse a broadly installed Cloud or coordinator App.
+3. Open the App's General settings and generate a private key. Download the PEM file and store it securely;
+   do not commit it. The App ID is different from the OAuth Client ID and the installation ID.
+4. Configure the variable and secret on **pipelineframework-cli**, which runs publication, rather than the tap.
+   Discover the actual App ID from the installed App instead of copying a placeholder:
+
+```sh
+TPF_TAP_APP_ID=$(gh api --paginate --slurp orgs/The-Pipeline-Framework/installations \
+  --jq '[.[].installations[] | select(.app_slug == "tpf-homebrew-tap-app") | .app_id] | unique | .[]')
+case "$TPF_TAP_APP_ID" in
+  ''|*[!0-9]*) echo "Expected one installed App with a numeric App ID" >&2; exit 1 ;;
+esac
+gh variable set HOMEBREW_APP_ID --repo The-Pipeline-Framework/pipelineframework-cli \
+  --body "$TPF_TAP_APP_ID"
+# Replace this path with the downloaded PEM file; never paste the key into a command argument.
+TPF_TAP_APP_KEY_PATH="/path/to/downloaded-private-key.pem"
+gh secret set HOMEBREW_APP_PRIVATE_KEY --repo The-Pipeline-Framework/pipelineframework-cli \
+  < "$TPF_TAP_APP_KEY_PATH"
+```
+
+The key can instead be an environment secret in `native-release`. The workflow needs `vars.HOMEBREW_APP_ID` and
+`secrets.HOMEBREW_APP_PRIVATE_KEY`. Secret-name presence proves configuration, not that the PEM belongs to this App;
+successful installation-token creation is the credential check. If the App ID is still the literal `<APP_ID>`,
+replace it with the discovered numeric ID. GitHub cannot return an existing private key; generate a replacement if
+it has been lost.
+
+Ensure the tap's default branch is `main`. Configure the `native-release` GitHub environment to allow protected
+version tags. The trusted publication job mints a short-lived token restricted to the tap and revokes it when finished.
+Build and conformance jobs receive no App credentials. The CLI repository's `GITHUB_TOKEN` publishes release assets;
+the App token commits cross-repository formulae. No PAT is required. The current stable publication job checks these
+prerequisites before publishing; snapshot archives use only `GITHUB_TOKEN` and do not require the App.
+
+For key rotation, generate the replacement, update the Actions secret, validate token creation during the trusted
+publication flow, and only then revoke the old key. Do not trigger a stable release merely to test credentials.
+See [GitHub App registration](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
+and [private-key management](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps).
+
+### Automating Homebrew provisioning
+
+Provisioning automation is the next maintainer slice; the current repository does not claim to provision its App.
+Keep this work in organisation infrastructure/bootstrap ownership, not in each CLI build or release:
+
+- Inventory and import the existing tap and App installation instead of creating replacements.
+- Use Terraform for the tap's durable repository policy, `HOMEBREW_APP_ID` variable, release-environment policy, and
+  the existing installation's repository binding. Enforce selected-repository access limited to the tap.
+- `github_app_installation_repository` manages an **existing installation** and cannot authenticate through an
+  installation token. It needs a separate authorised provisioning identity; the tap-writing App must not be given
+  administration permissions so it can provision itself.
+- For repeatable App registration, a GitHub App manifest can define contents-write permission, private visibility,
+  and disabled webhooks. GitHub still requires owner approval in the browser and a secure callback/code exchange.
+  Registration does not remove the installation step. Do not put the manifest conversion response or PEM in logs.
+- Seed and rotate the PEM directly in GitHub Actions or an approved secret manager. Terraform's sensitive plaintext
+  secret inputs still enter state. If Terraform manages the secret, use GitHub-public-key-encrypted input and record
+  its encryption key ID; pin and check the provider schema before implementation.
+- Acceptance must prove idempotence, no takeover of unrelated repositories, rejection of placeholder IDs or incorrect
+  scope, secret-safe rotation, and trusted token validation against the tap without committing a formula or publishing
+  a release. CLI CI continues to mint ephemeral installation tokens and publish tested assets.
+
+This is partial automation with an explicit bootstrap, not a Terraform resource that creates the complete App and
+its keys. See the provider's [installation binding](https://registry.terraform.io/providers/integrations/github/latest/docs/resources/app_installation_repository)
+and [Actions secret](https://registry.terraform.io/providers/integrations/github/latest/docs/resources/actions_secret)
+contracts, and GitHub's [manifest registration flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest).
 
 ### Release
 
