@@ -28,7 +28,8 @@ for module in modules:
     ignored = subprocess.run(["git", "check-ignore", "-q", source_path], cwd=ROOT)
     assert ignored.returncode == 1, "Java target packages must not be ignored as Maven output"
 snapshot = (ROOT / ".github/workflows/publish-snapshot.yml").read_text()
-assert "schedule:" in snapshot and "workflow_dispatch:" in snapshot
+assert "  push:\n    branches: [main]" in snapshot and "workflow_dispatch:" in snapshot
+assert "schedule:" not in snapshot, "snapshots publish on merge, not a redundant nightly schedule"
 assert "ref: refs/heads/main" in snapshot and "persist-credentials: false" in snapshot
 assert "clean deploy -Pcentral-publishing" in snapshot
 assert "-Dmaven.repo.local=" in snapshot and "-DskipTests" not in snapshot

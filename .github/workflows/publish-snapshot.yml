@@ -1,9 +1,8 @@
 name: Publish Maven Central Snapshot
 
 on:
-  schedule:
-    # After runtime's nightly snapshot slot; cron is UTC, not a dependency gate.
-    - cron: '47 20 * * *'
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
