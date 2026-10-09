@@ -2,6 +2,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
   <parent><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-cli-parent</artifactId><version>26.10.1-SNAPSHOT</version></parent>
   <artifactId>tpf-release-resolver</artifactId>
+  <!-- Shared by Java 21 runtimes; the CLI and other modules retain their Java 25 baseline. -->
+  <properties><maven.compiler.release>21</maven.compiler.release></properties>
   <dependencies>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-runtime-core</artifactId><version>${tpf.version}</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-runtime-serialization</artifactId><version>${tpf.version}</version></dependency>

@@ -50,3 +50,10 @@ credentials. Human users sign in explicitly; CI uses service credentials without
 - [CI Cloud authentication](https://pipelineframework.org/deploy/deployment-cli#ci-cloud-deployment)
 
 For source builds, validation and publication procedures, see [Contributing](CONTRIBUTING.md).
+
+## Embedded Release verification
+
+`org.pipelineframework:tpf-release-resolver` is the build-tool-neutral verification
+library used by the CLI and runtime consumers. Its bytecode targets Java 21 so a
+Java 21 Coordinator can use the same descriptor and artifact validation. This
+does not lower the Java 25 source-build baseline of the CLI or its other modules.
