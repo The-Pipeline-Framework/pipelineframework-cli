@@ -2,5 +2,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
   <parent><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-cli-parent</artifactId><version>26.11.1-SNAPSHOT</version></parent>
   <artifactId>tpf-deployment-api</artifactId>
+  <name>tpf-deployment-api</name>
   <dependencies><dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-release-resolver</artifactId><version>${project.version}</version></dependency></dependencies>
 </project>
