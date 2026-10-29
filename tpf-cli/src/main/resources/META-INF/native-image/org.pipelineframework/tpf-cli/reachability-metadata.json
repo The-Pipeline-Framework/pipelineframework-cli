@@ -811,6 +811,7 @@
             "java.lang.String",
             "org.pipelineframework.orchestrator.composition.PipelineCompositionDescriptor",
             "java.util.List",
+            "java.util.List",
             "java.util.List"
           ]
         }

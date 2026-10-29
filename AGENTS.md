@@ -33,6 +33,12 @@ The nightly/manual `publish-snapshot.yml` publishes only `main`. It needs reposi
 `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE`. Do not publish from a feature branch or trigger a release
 without explicit authorisation. `central-publishing` is the sole allowed profile and must not alter the reactor.
 
+Tagged Maven releases use `publish-release.yml`. The existing `native-distribution.yml` owns the GitHub Release
+and Homebrew formula after native conformance and exact-source compatibility pass. The Maven publisher must not
+create a second GitHub Release; its responsibility is the signed Central artifacts.
+Container releases use the immutable tag push, not a GitHub Release event. Main and tag publication use separate
+concurrency groups so advancing development cannot displace a queued stable image publication.
+
 When adding artifacts, update candidate collection, metadata, trusted validation and upload lists, the product
 BOM/publication manifest and central component allowlist together. Follow the
 [component onboarding checklist](https://github.com/The-Pipeline-Framework/pipelineframework/blob/main/docs/evolve/cross-repository-system-tests.md#adding-a-component-or-public-artifact).
