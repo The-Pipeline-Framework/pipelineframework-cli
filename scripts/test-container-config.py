@@ -60,6 +60,10 @@ class ContainerConfigurationTest(unittest.TestCase):
 
     def test_publication_is_trusted_and_retests_published_digest(self):
         workflow = (ROOT / ".github/workflows/publish-container.yml").read_text()
+        self.assertIn("tags: ['v*']", workflow)
+        self.assertNotIn("\n  release:", workflow)
+        self.assertIn("group: cli-container-publication-${{ github.ref }}", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/tags/v') && github.ref_name", workflow)
         self.assertNotIn("pull_request", workflow)
         self.assertNotIn("workflow_run", workflow)
         self.assertNotIn("PAT", workflow)
