@@ -5,7 +5,7 @@ on:
     branches: [main]
     tags: ['v*']
   schedule:
-    # Same nightly slot as Maven snapshots; both validate independently.
+    # Native snapshot nightly; Maven snapshots publish on main pushes or manual runs.
     - cron: '47 20 * * *'
   workflow_dispatch:
 permissions:

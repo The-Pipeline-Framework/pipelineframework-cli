@@ -91,8 +91,8 @@ outside this distribution.
 
 ### Snapshot latest
 
-The nightly schedule runs at 20:47 UTC, alongside the existing Maven Central snapshot schedule. Both workflows
-validate independently; the native workflow does not require a stable version or Maven publication credentials.
+The native nightly schedule runs at 20:47 UTC. Maven Central snapshots publish on main pushes or manual runs;
+the workflows validate independently, and native snapshots do not require Maven publication credentials.
 Manual runs on main can also publish snapshots; main pushes and PRs validate without snapshot publication.
 
 A `-SNAPSHOT` reactor version on trusted main is eligible for the moving `latest` GitHub prerelease after all native
@@ -207,4 +207,3 @@ for concrete Picocli command classes, Jackson record construction, Maven Resolve
 HTTP and authentication paths. Platform-specific Apple security provider entries were removed. Fixture credentials,
 absolute workstation paths and captured application data are not metadata. Native conformance, rather than successful
 compilation alone, is the gate for metadata changes.
-
