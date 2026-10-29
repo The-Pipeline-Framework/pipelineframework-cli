@@ -27,7 +27,7 @@ TPF_RUN_PODMAN_OCI_TEST=true ./mvnw -pl tpf-release-resolver test -Dmaven.repo.l
 ```sh
 python3 scripts/test-publication-config.py
 python3 scripts/test-container-config.py
-docker build --build-arg VERSION=26.10.1-SNAPSHOT --build-arg REVISION="$(git rev-parse HEAD)" -t tpf-tested .
+docker build --build-arg VERSION=26.11.1-SNAPSHOT --build-arg REVISION="$(git rev-parse HEAD)" -t tpf-tested .
 python3 scripts/test-container-workflow.py --image tpf-tested
 ```
 

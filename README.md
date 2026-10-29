@@ -17,7 +17,7 @@ tpf --version
 
 For a development snapshot, download your platform's checksummed ZIP from the
 [`latest` prerelease](https://github.com/The-Pipeline-Framework/pipelineframework-cli/releases/tag/latest).
-Snapshots retain a version such as `26.10.1-SNAPSHOT`. The nightly channel is separate from stable releases and does
+Snapshots retain a version such as `26.11.1-SNAPSHOT`. The nightly channel is separate from stable releases and does
 not update the stable Homebrew formula.
 
 Follow [Install the TPF CLI](https://pipelineframework.org/deploy/cli-installation) for archive installation,
