@@ -36,6 +36,10 @@ without explicit authorisation. `central-publishing` is the sole allowed profile
 Tagged Maven releases use `publish-release.yml`. The existing `native-distribution.yml` owns the GitHub Release
 and Homebrew formula after native conformance and exact-source compatibility pass. The Maven publisher must not
 create a second GitHub Release; its responsibility is the signed Central artifacts.
+If Central rejects an immutable release solely for missing POM display names, the manual
+`publish-release.yml` recovery accepts the existing tag, verifies its main ancestry, and adds only
+missing artifact display names before the full signed deployment. It logs that metadata patch;
+it must not move the tag or modify Java sources, coordinates, dependencies, or the reactor.
 Container releases use the immutable tag push, not a GitHub Release event. Main and tag publication use separate
 concurrency groups so advancing development cannot displace a queued stable image publication.
 

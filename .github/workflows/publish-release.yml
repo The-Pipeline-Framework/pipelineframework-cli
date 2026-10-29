@@ -3,6 +3,12 @@ name: Publish Maven Central Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable release tag to recover (for example v26.10.1)
+        required: true
+        type: string
 
 concurrency:
   group: cli-central-release-publishing
@@ -11,6 +17,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -18,10 +27,36 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
           persist-credentials: false
       - name: Require release source merged into main
-        run: git merge-base --is-ancestor HEAD origin/main
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          git merge-base --is-ancestor HEAD origin/main
+          git rev-parse HEAD
+      - name: Recover missing Central display names without changing release sources
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          root = ET.parse("pom.xml").getroot()
+          for module in root.findall("m:modules/m:module", ns):
+              assert pathlib.Path(module.text).parts == (module.text,)
+              path = pathlib.Path(module.text) / "pom.xml"
+              pom = ET.parse(path).getroot()
+              if pom.find("m:name", ns) is None:
+                  artifact = pom.findtext("m:artifactId", namespaces=ns)
+                  token = f"<artifactId>{artifact}</artifactId>"
+                  text = path.read_text()
+                  assert text.count(token) == 1, path
+                  path.write_text(text.replace(token, token + f"\n  <name>{artifact}</name>", 1))
+                  print(f"Central display-name metadata only: {path}")
+          PY
+          git diff -- '**/pom.xml'
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -35,7 +70,7 @@ jobs:
         run: |
           python3 scripts/test-publication-config.py
           VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository")"
-          test "${GITHUB_REF_NAME#v}" = "$VERSION"
+          test "${RELEASE_TAG#v}" = "$VERSION"
           case "$VERSION" in *-SNAPSHOT) exit 1;; esac
       - name: Verify and publish canonical reactor
         run: ./mvnw -B clean deploy -Pcentral-publishing --no-transfer-progress -Dgpg.skip=false -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository"
