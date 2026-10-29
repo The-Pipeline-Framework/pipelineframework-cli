@@ -12,8 +12,8 @@ ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
 print(root.findtext('m:version', namespaces=ns))
 PY
 )
-[[ "$base_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-SNAPSHOT$ ]] || {
-  echo "root project version must be a SNAPSHOT semver" >&2
+[[ "$base_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-SNAPSHOT)?$ ]] || {
+  echo "root project version must be a release or SNAPSHOT semver" >&2
   exit 2
 }
 base_version=${base_version%-SNAPSHOT}
