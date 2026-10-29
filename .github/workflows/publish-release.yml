@@ -1,0 +1,49 @@
+name: Publish Maven Central Release
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: cli-central-release-publishing
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require release source merged into main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+      - name: Verify immutable release identity and publication contract
+        run: |
+          python3 scripts/test-publication-config.py
+          VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository")"
+          test "${GITHUB_REF_NAME#v}" = "$VERSION"
+          case "$VERSION" in *-SNAPSHOT) exit 1;; esac
+      - name: Verify and publish canonical reactor
+        run: ./mvnw -B clean deploy -Pcentral-publishing --no-transfer-progress -Dgpg.skip=false -Dmaven.repo.local="$GITHUB_WORKSPACE/.m2/repository"
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

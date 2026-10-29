@@ -35,4 +35,14 @@ assert "clean deploy -Pcentral-publishing" in snapshot
 assert "-Dmaven.repo.local=" in snapshot and "-DskipTests" not in snapshot
 for name in ("CENTRAL_USERNAME", "CENTRAL_PASSWORD", "GPG_PRIVATE_KEY", "GPG_PASSPHRASE"):
     assert "secrets." + name in snapshot
-print("CLI snapshot publication configuration passed")
+release = (ROOT / ".github/workflows/publish-release.yml").read_text()
+assert "tags: ['v*']" in release and "refs/heads/main" not in release
+assert "git merge-base --is-ancestor HEAD origin/main" in release
+assert 'test "${GITHUB_REF_NAME#v}" = "$VERSION"' in release
+assert 'case "$VERSION" in *-SNAPSHOT) exit 1;; esac' in release
+assert "clean deploy -Pcentral-publishing" in release and "-Dgpg.skip=false" in release
+assert "-Dmaven.repo.local=" in release and "-DskipTests" not in release
+assert "permission" in release and "contents: write" in release
+for name in ("CENTRAL_USERNAME", "CENTRAL_PASSWORD", "GPG_PRIVATE_KEY", "GPG_PASSPHRASE"):
+    assert "secrets." + name in release
+print("CLI snapshot and release publication configuration passed")
