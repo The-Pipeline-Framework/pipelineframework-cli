@@ -42,7 +42,8 @@ assert 'test "${GITHUB_REF_NAME#v}" = "$VERSION"' in release
 assert 'case "$VERSION" in *-SNAPSHOT) exit 1;; esac' in release
 assert "clean deploy -Pcentral-publishing" in release and "-Dgpg.skip=false" in release
 assert "-Dmaven.repo.local=" in release and "-DskipTests" not in release
-assert "permission" in release and "contents: write" in release
+assert "contents: read" in release and "contents: write" not in release
+assert "action-gh-release" not in release, "native distribution owns the GitHub release"
 for name in ("CENTRAL_USERNAME", "CENTRAL_PASSWORD", "GPG_PRIVATE_KEY", "GPG_PASSPHRASE"):
     assert "secrets." + name in release
 print("CLI snapshot and release publication configuration passed")
