@@ -32,6 +32,21 @@ tpf release verify --help
 tpf release verify --release target/pipeline-release.json
 ```
 
+To prepare a local release for a pipeline with `PIPELINE_RUNTIME` placement
+and separate Lambda ingress and worker ZIPs, package the application first and run:
+
+```sh
+tpf release prepare --release-version 0.1.0-SNAPSHOT \
+  --contract app/target/classes/META-INF/pipeline/pipeline-contract.json \
+  --ingress function-http/target/function.zip \
+  --worker function-worker/target/function.zip
+```
+
+TPF derives step and capability associations for the worker from the compiled
+contract and packages the compiler metadata alongside the descriptor. This
+command emits local file references and performs no upload or deployment.
+
+
 Without `--release`, the CLI discovers `pipeline-release.json` or `target/pipeline-release.json` in the current
 directory. If both exist, select one explicitly. Native installation reads your host files directly; no mounts are needed.
 

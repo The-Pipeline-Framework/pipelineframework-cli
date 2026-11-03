@@ -17,7 +17,7 @@ root = pathlib.Path(sys.argv[1])
 ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
 parent = ET.parse(root / 'pom.xml').getroot()
 version = parent.findtext('m:version', namespaces=ns)
-expected = {'pipelineframework-cli-parent', 'tpf-release-resolver', 'tpf-deployment-api', 'tpf-deployment-core', 'tpf-deployment-target-local', 'tpf-deployment-target-cloud', 'tpf-cli'}
+expected = {'pipelineframework-cli-parent', 'tpf-deployment-api', 'tpf-deployment-core', 'tpf-deployment-target-local', 'tpf-deployment-target-cloud', 'tpf-cli'}
 actual = {parent.findtext('m:artifactId', namespaces=ns)}
 for pom in sorted(root.glob('*/pom.xml')):
     project = ET.parse(pom).getroot()
@@ -32,7 +32,7 @@ PY
 import pathlib, sys, xml.etree.ElementTree as ET
 root = pathlib.Path(sys.argv[1]); ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
 version = ET.parse(root / 'pom.xml').getroot().findtext('m:version', namespaces=ns)
-reactor = {'tpf-release-resolver', 'tpf-deployment-api', 'tpf-deployment-core', 'tpf-deployment-target-local', 'tpf-deployment-target-cloud', 'tpf-cli'}
+reactor = {'tpf-deployment-api', 'tpf-deployment-core', 'tpf-deployment-target-local', 'tpf-deployment-target-cloud', 'tpf-cli'}
 for pom in sorted(root.glob('*/pom.xml')):
     project = ET.parse(pom).getroot()
     for dependency in project.findall('.//m:dependency', namespaces=ns):

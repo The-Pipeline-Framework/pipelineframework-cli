@@ -144,6 +144,25 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
         fixture_process = subprocess.Popen([sys.executable, str(fixture_script)], env={**os.environ,
             "TPF_FIXTURE_ROOT": str(root), "TPF_FIXTURE_PORT": str(port)})
 
+    def test_installed_release_prepare():
+        work = root / "prepare with spaces"; work.mkdir()
+        metadata = work / "META-INF/pipeline"; metadata.mkdir(parents=True)
+        compiled = {**contract, "runtimeLayout": "PIPELINE_RUNTIME"}
+        (metadata / "pipeline-contract.json").write_text(json.dumps(compiled))
+        ingress, worker = work / "ingress.zip", work / "worker.zip"
+        for package in (ingress, worker):
+            with zipfile.ZipFile(package, "w") as archive:
+                archive.writestr("bootstrap", package.name)
+        result = installed(work, ["release", "prepare", "--release-version", "fixture-1",
+                                 "--contract", str(metadata / "pipeline-contract.json"),
+                                 "--ingress", str(ingress), "--worker", str(worker)])
+        assert result.returncode == 0, result.stderr + result.stdout
+        prepared = json.loads((work / "target/pipeline-release.json").read_bytes())
+        carrier, ingress_descriptor, worker_descriptor = prepared["artifacts"]
+        assert carrier["kind"] == "compiled-truth"
+        assert ingress_descriptor["stepIds"] == [] and ingress_descriptor["digest"] == digest(ingress.read_bytes())
+        assert worker_descriptor["stepIds"] == ["Validate"] and worker_descriptor["digest"] == digest(worker.read_bytes())
+
     def test_installed_auth_and_paths():
         work = root / "path with spaces"; work.mkdir()
         local = json.loads(descriptor_bytes); local["artifacts"] = local["artifacts"][:1]
@@ -260,7 +279,7 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
                 try: urllib.request.urlopen(endpoint + "/ready").close(); break
                 except OSError: time.sleep(0.1)
             else: raise RuntimeError("Fixture did not become ready")
-            for path in ([], ["release"], ["release", "verify"], ["deploy"], ["auth"], ["auth", "login"], ["auth", "status"], ["auth", "logout"]):
+            for path in ([], ["release"], ["release", "prepare"], ["release", "verify"], ["deploy"], ["auth"], ["auth", "login"], ["auth", "status"], ["auth", "logout"]):
                 for flag in ("--help", "-h"):
                     result = installed(root, [*path, flag])
                     assert result.returncode == 0 and not result.stderr, result
@@ -269,6 +288,7 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
             version_text = version.stdout.strip()
             assert version.returncode == 0 and "development" not in version.stdout and "${" not in version.stdout, version
             assert installed(root, ["release", "verify"]).returncode == 2
+            test_installed_release_prepare()
         for operation in (["release", "verify"], ["deploy", "staging"]):
             work = root / ("verify" if operation[0] == "release" else "deploy")
             work.mkdir()

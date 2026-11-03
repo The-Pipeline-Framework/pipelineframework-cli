@@ -32,7 +32,6 @@
     </scm>
 
     <modules>
-        <module>tpf-release-resolver</module>
         <module>tpf-deployment-api</module>
         <module>tpf-deployment-core</module>
         <module>tpf-deployment-target-local</module>
@@ -43,10 +42,8 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
-        <tpf.version>26.11.1-SNAPSHOT</tpf.version>
+        <tpf.runtime.version>26.11.1-SNAPSHOT</tpf.runtime.version>
         <jackson.version>2.22.2</jackson.version>
-        <maven.resolver.version>1.9.27</maven.resolver.version>
-        <maven.version>3.9.16</maven.version>
         <picocli.version>4.7.7</picocli.version>
         <junit.version>5.13.4</junit.version>
     </properties>
@@ -69,10 +66,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-            <dependency><groupId>org.apache.maven</groupId><artifactId>maven-resolver-provider</artifactId><version>${maven.version}</version></dependency>
-            <dependency><groupId>org.apache.maven.resolver</groupId><artifactId>maven-resolver-connector-basic</artifactId><version>${maven.resolver.version}</version></dependency>
-            <dependency><groupId>org.apache.maven.resolver</groupId><artifactId>maven-resolver-transport-file</artifactId><version>${maven.resolver.version}</version></dependency>
-            <dependency><groupId>org.apache.maven.resolver</groupId><artifactId>maven-resolver-transport-http</artifactId><version>${maven.resolver.version}</version></dependency>
             <dependency>
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>

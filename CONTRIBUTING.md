@@ -19,6 +19,7 @@ The ordinary test suite has no container dependency. Run the real OCI registry c
 machine with Podman:
 
 ```bash
+# From the pipelineframework-runtime checkout
 TPF_RUN_PODMAN_OCI_TEST=true ./mvnw -pl tpf-release-resolver test -Dmaven.repo.local="$PWD/.m2/repository"
 ```
 

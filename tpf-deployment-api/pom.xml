@@ -3,5 +3,5 @@
   <parent><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-cli-parent</artifactId><version>26.11.1-SNAPSHOT</version></parent>
   <artifactId>tpf-deployment-api</artifactId>
   <name>tpf-deployment-api</name>
-  <dependencies><dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-release-resolver</artifactId><version>${project.version}</version></dependency></dependencies>
+  <dependencies><dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-release-resolver</artifactId><version>${tpf.runtime.version}</version></dependency></dependencies>
 </project>

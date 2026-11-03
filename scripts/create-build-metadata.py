@@ -17,7 +17,7 @@ elif event == 'push':
     expected_suffix = f'-main.{source_sha[:12]}'
 else: raise SystemExit(f'unsupported candidate build event: {event}')
 if not version.endswith(expected_suffix): raise SystemExit('candidate version does not match source event and SHA')
-coordinates = [('pipelineframework-cli-parent', 'pom'), ('tpf-release-resolver', 'jar'), ('tpf-deployment-api', 'jar'), ('tpf-deployment-core', 'jar'), ('tpf-deployment-target-local', 'jar'), ('tpf-deployment-target-cloud', 'jar'), ('tpf-cli', 'jar')]
+coordinates = [('pipelineframework-cli-parent', 'pom'), ('tpf-deployment-api', 'jar'), ('tpf-deployment-core', 'jar'), ('tpf-deployment-target-local', 'jar'), ('tpf-deployment-target-cloud', 'jar'), ('tpf-cli', 'jar')]
 artifacts = []
 for artifact_id, packaging in coordinates:
     directory = root / 'repository' / 'org' / 'pipelineframework' / artifact_id / version

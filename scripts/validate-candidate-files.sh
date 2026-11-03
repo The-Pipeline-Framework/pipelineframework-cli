@@ -22,7 +22,7 @@ metadata = json.loads(meta_path.read_text())
 base_repo = "The-Pipeline-Framework/pipelineframework-cli"
 coords = [
     ("org.pipelineframework", "pipelineframework-cli-parent", "pom"),
-    ("org.pipelineframework", "tpf-release-resolver", "jar"),
+    ("org.pipelineframework", "jar"),
     ("org.pipelineframework", "tpf-deployment-api", "jar"),
     ("org.pipelineframework", "tpf-deployment-core", "jar"),
     ("org.pipelineframework", "tpf-deployment-target-local", "jar"),
