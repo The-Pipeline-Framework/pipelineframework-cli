@@ -1,8 +1,13 @@
 package org.pipelineframework.cli;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.zip.CRC32;
+import java.util.zip.CheckedInputStream;
+import java.util.zip.ZipFile;
 import org.pipelineframework.release.producer.DefaultPipelineReleaseProducer;
 import org.pipelineframework.release.producer.ReleaseArtifactInput;
 import org.pipelineframework.release.producer.ReleaseArtifactInput.Role;
@@ -25,6 +30,8 @@ final class ReleasePrepareCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
+            validateZip(ingress, "--ingress");
+            validateZip(worker, "--worker");
             Path metadata = contract.toAbsolutePath().normalize().getParent();
             Path descriptor = output.toAbsolutePath().normalize();
             var producer = new DefaultPipelineReleaseProducer();
@@ -32,8 +39,8 @@ final class ReleasePrepareCommand implements Callable<Integer> {
             String carrierId = "compiled-truth";
             var artifacts = producer.materialize(List.of(
                 new ReleaseArtifactInput(carrierId, "compiled-truth", metadata,
-                    descriptor.resolveSibling("pipeline-release-artifacts").resolve(carrierId + ".zip")
-                        .toUri().toASCIIString(), List.of(), List.of()),
+                    // The materializer replaces the local URI with the digest-addressed archive URI.
+                    descriptor.toUri().toASCIIString(), List.of(), List.of()),
                 localArtifact("http-ingress", "lambda-zip", ingress, Role.INGRESS),
                 localArtifact("work-and-recovery", "lambda-zip", worker, Role.PIPELINE_WORKER)),
                 carrierId, metadata, descriptor.getParent());
@@ -43,6 +50,24 @@ final class ReleasePrepareCommand implements Callable<Integer> {
             return 0;
         } catch (IllegalArgumentException | IllegalStateException e) {
             return CliSupport.failure(e, spec.commandLine().getErr());
+        }
+    }
+
+    private static void validateZip(Path file, String option) {
+        try (var zip = new ZipFile(file.toFile())) {
+            if (zip.size() == 0) throw new IOException("ZIP is empty");
+            var entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                var entry = entries.nextElement();
+                try (var content = new CheckedInputStream(zip.getInputStream(entry), new CRC32())) {
+                    long size = content.transferTo(OutputStream.nullOutputStream());
+                    if (size != entry.getSize() || content.getChecksum().getValue() != entry.getCrc()) {
+                        throw new IOException("ZIP entry is damaged: " + entry.getName());
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException(option + " requires an intact ZIP: " + file + " (" + e.getMessage() + ")");
         }
     }
 

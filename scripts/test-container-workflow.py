@@ -153,9 +153,18 @@ with tempfile.TemporaryDirectory(prefix="tpf-container-") as directory:
         for package in (ingress, worker):
             with zipfile.ZipFile(package, "w") as archive:
                 archive.writestr("bootstrap", package.name)
-        result = installed(work, ["release", "prepare", "--release-version", "fixture-1",
-                                 "--contract", str(metadata / "pipeline-contract.json"),
-                                 "--ingress", str(ingress), "--worker", str(worker)])
+        command = ["release", "prepare", "--release-version", "fixture-1",
+                   "--contract", str(metadata / "pipeline-contract.json"),
+                   "--ingress", str(ingress), "--worker", str(worker)]
+        for option, invalid in (("--ingress", b"not a zip"), ("--worker", worker.read_bytes()[:-12])):
+            broken = work / "broken.zip"
+            broken.write_bytes(invalid)
+            bad_command = command.copy()
+            bad_command[command.index(option) + 1] = str(broken)
+            result = installed(work, bad_command)
+            assert result.returncode != 0 and f"{option} requires an intact ZIP" in result.stderr, result
+            assert not (work / "target/pipeline-release.json").exists()
+        result = installed(work, command)
         assert result.returncode == 0, result.stderr + result.stdout
         prepared = json.loads((work / "target/pipeline-release.json").read_bytes())
         carrier, ingress_descriptor, worker_descriptor = prepared["artifacts"]
