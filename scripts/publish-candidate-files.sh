@@ -22,7 +22,6 @@ EOF
 
 coordinates=(
   "org.pipelineframework:pipelineframework-cli-parent:pom"
-  "org.pipelineframework:tpf-release-resolver:jar"
   "org.pipelineframework:tpf-deployment-api:jar"
   "org.pipelineframework:tpf-deployment-core:jar"
   "org.pipelineframework:tpf-deployment-target-local:jar"

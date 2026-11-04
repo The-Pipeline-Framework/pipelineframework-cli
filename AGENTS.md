@@ -9,8 +9,8 @@
 - Coordinated changes use compatibility sets before merge. Those runs continue to use exact immutable candidate/baseline versions, not floating snapshots. No composite source reactor or extra Maven profile is introduced.
 - Freeze compatible published coordinates for a stable release. Never alter an already published release, connector contract identity, or pipeline release pin to make development float.
 
-This repository owns build-tool-neutral release resolution and deployment adapters. Runtime owns release
-production; compiler and contracts remain separately owned. Do not import sibling repository sources.
+This repository owns the CLI and deployment adapters. Runtime owns build-tool-neutral release
+production and resolution; compiler and contracts remain separately owned. Do not import sibling repository sources.
 
 Run the canonical owner gate with an isolated cache:
 

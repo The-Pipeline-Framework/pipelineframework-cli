@@ -1,6 +1,7 @@
 # Contributing to the TPF CLI
 
-This repository owns the CLI and its build-tool-neutral release resolution and deployment adapters.
+This repository owns the CLI and deployment adapters. The build-tool-neutral resolver implementation
+and its tests live in `pipelineframework-runtime`.
 User documentation is published in the [TPF Deploy documentation](https://pipelineframework.org/deploy/deployment-cli).
 Update that canonical documentation alongside changes to user behaviour. This repository does not publish a docs site.
 
@@ -19,6 +20,7 @@ The ordinary test suite has no container dependency. Run the real OCI registry c
 machine with Podman:
 
 ```bash
+# From the pipelineframework-runtime checkout
 TPF_RUN_PODMAN_OCI_TEST=true ./mvnw -pl tpf-release-resolver test -Dmaven.repo.local="$PWD/.m2/repository"
 ```
 

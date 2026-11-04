@@ -4,6 +4,7 @@
   <artifactId>tpf-cli</artifactId>
   <name>tpf-cli</name>
   <dependencies>
+    <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-release-producer</artifactId><version>${tpf.runtime.version}</version></dependency>
     <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-nop</artifactId><version>1.7.36</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-core</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-target-local</artifactId><version>${project.version}</version></dependency>

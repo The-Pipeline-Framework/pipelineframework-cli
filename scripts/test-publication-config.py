@@ -17,7 +17,7 @@ assert profiles[0].find("m:modules", NS) is None, "publication must not select a
 plugin = next(plugin for plugin in profiles[0].findall("m:build/m:plugins/m:plugin", NS)
               if plugin.findtext("m:artifactId", namespaces=NS) == "central-publishing-maven-plugin")
 assert plugin.findtext("m:configuration/m:checksums", namespaces=NS) == "required"
-expected = {"tpf-release-resolver", "tpf-deployment-api", "tpf-deployment-core",
+expected = {"tpf-deployment-api", "tpf-deployment-core",
             "tpf-deployment-target-local", "tpf-deployment-target-cloud", "tpf-cli"}
 modules = {module.text for module in pom.findall("m:modules/m:module", NS)}
 assert modules == expected

@@ -673,6 +673,20 @@
       ]
     },
     {
+      "type": "org.pipelineframework.cli.ReleasePrepareCommand",
+      "fields": [
+        { "name": "contract" },
+        { "name": "version" },
+        { "name": "ingress" },
+        { "name": "worker" },
+        { "name": "output" },
+        { "name": "spec" }
+      ],
+      "methods": [
+        { "name": "<init>", "parameterTypes": [] }
+      ]
+    },
+    {
       "type": "org.pipelineframework.cli.ReleaseVerifyCommand",
       "fields": [
         {
@@ -820,6 +834,12 @@
     {
       "type": "org.pipelineframework.orchestrator.release.PipelineReleaseArtifactDescriptor",
       "methods": [
+        { "name": "artifactId", "parameterTypes": [] },
+        { "name": "kind", "parameterTypes": [] },
+        { "name": "uri", "parameterTypes": [] },
+        { "name": "digest", "parameterTypes": [] },
+        { "name": "stepIds", "parameterTypes": [] },
+        { "name": "capabilities", "parameterTypes": [] },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -836,6 +856,12 @@
     {
       "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDescriptor",
       "methods": [
+        { "name": "schemaVersion", "parameterTypes": [] },
+        { "name": "pipelineId", "parameterTypes": [] },
+        { "name": "contractVersion", "parameterTypes": [] },
+        { "name": "releaseVersion", "parameterTypes": [] },
+        { "name": "compiledTruthArtifactId", "parameterTypes": [] },
+        { "name": "artifacts", "parameterTypes": [] },
         {
           "name": "<init>",
           "parameterTypes": [
