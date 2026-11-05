@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +51,13 @@ class LocalProcessTargetTest {
             var result = target.activate(plan, runtime);
             assertEquals(DeploymentStatus.ACTIVE, result.status());
             assertEquals(2, release.resolved().artifacts().size());
+        } catch (DeploymentException failure) {
+            try (var paths = Files.walk(configuration.workspace())) {
+                for (Path log : paths.filter(path -> path.getFileName().toString().endsWith(".log")).toList()) {
+                    failure.addSuppressed(new IOException(log.getFileName() + ":\n" + Files.readString(log)));
+                }
+            }
+            throw failure;
         } finally {
             target.terminateStartedProcesses();
         }
