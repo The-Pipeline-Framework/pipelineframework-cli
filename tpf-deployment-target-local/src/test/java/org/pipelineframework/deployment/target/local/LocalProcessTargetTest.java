@@ -35,8 +35,19 @@ class LocalProcessTargetTest {
     void startsMultipleVerifiedNativeUnitsAndReachesActive() throws Exception {
         int firstPort = freePort();
         int secondPort = freePort();
-        Path first = script("first", "#!/bin/sh\nexec python3 -m http.server \"$1\" --bind 127.0.0.1\n");
-        Path second = script("second", "#!/bin/sh\nexec python3 -m http.server \"$1\" --bind 127.0.0.1\n");
+        // Test readiness over loopback without HTTPServer's reverse-DNS startup dependency.
+        String serverScript = """
+            #!/bin/sh
+            exec python3 -u - "$1" <<'PYTHON'
+            import http.server
+            import socketserver
+            import sys
+            with socketserver.TCPServer(("127.0.0.1", int(sys.argv[1])), http.server.SimpleHTTPRequestHandler) as server:
+                server.serve_forever()
+            PYTHON
+            """;
+        Path first = script("first", serverScript);
+        Path second = script("second", serverScript);
         VerifiedRelease release = verified(List.of(input("first", first), input("second", second)));
         var configuration = new LocalProcessTargetConfiguration(
             temporaryDirectory.resolve("deployments"), "java", List.of(
