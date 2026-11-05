@@ -6,6 +6,7 @@ import http.server
 import json
 import os
 import ssl
+import socketserver
 from urllib.parse import parse_qs
 from pathlib import Path
 
@@ -99,7 +100,8 @@ class Fixture(http.server.BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
 
-server = http.server.HTTPServer(("127.0.0.1" if os.environ.get("TPF_FIXTURE_ROOT") else "0.0.0.0", int(os.environ.get("TPF_FIXTURE_PORT", "8080"))), Fixture)
+# Fixture addresses are numeric; avoid reverse DNS while starting the test server.
+server = socketserver.TCPServer(("127.0.0.1" if os.environ.get("TPF_FIXTURE_ROOT") else "0.0.0.0", int(os.environ.get("TPF_FIXTURE_PORT", "8080"))), Fixture)
 if os.environ.get("TPF_FIXTURE_CERT"):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(os.environ["TPF_FIXTURE_CERT"], os.environ["TPF_FIXTURE_KEY"])
