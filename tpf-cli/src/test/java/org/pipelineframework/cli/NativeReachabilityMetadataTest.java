@@ -30,6 +30,15 @@ class NativeReachabilityMetadataTest {
                 .map(component -> component.getType().getName()).toList();
             assertTrue(constructors.contains(signature),
                 () -> "Native metadata must register the canonical constructor of " + record.getName() + ": " + signature);
+            // The pre-existing PipelineContractDescriptor is constructor-only input metadata.
+            // Schema-2 release records also need accessors for native descriptor serialization.
+            if (record == PipelineContractDescriptor.class) continue;
+            for (var component : record.getRecordComponents()) {
+                assertTrue(StreamSupport.stream(registration(metadata, record.getName()).path("methods").spliterator(), false)
+                    .anyMatch(method -> component.getAccessor().getName().equals(method.path("name").asText())
+                        && method.path("parameterTypes").isArray() && method.path("parameterTypes").isEmpty()),
+                    () -> "Native metadata must register accessor " + record.getName() + "." + component.getName() + "()");
+            }
         }
     }
 
