@@ -854,6 +854,12 @@
       ]
     },
     {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$PipelineReleaseDescriptorMixin",
+      "methods": [
+        { "name": "deployment", "parameterTypes": [] }
+      ]
+    },
+    {
       "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDescriptor",
       "methods": [
         { "name": "schemaVersion", "parameterTypes": [] },
@@ -862,6 +868,7 @@
         { "name": "releaseVersion", "parameterTypes": [] },
         { "name": "compiledTruthArtifactId", "parameterTypes": [] },
         { "name": "artifacts", "parameterTypes": [] },
+        { "name": "deployment", "parameterTypes": [] },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -870,7 +877,84 @@
             "java.lang.String",
             "java.lang.String",
             "java.lang.String",
-            "java.util.List"
+            "java.util.List",
+            "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment",
+      "methods": [
+        { "name": "profile", "parameterTypes": [] },
+        { "name": "entries", "parameterTypes": [] },
+        { "name": "bindings", "parameterTypes": [] },
+        { "name": "check", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.util.List",
+            "java.util.List",
+            "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Check"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Entry",
+      "methods": [
+        { "name": "entryId", "parameterTypes": [] },
+        { "name": "artifactId", "parameterTypes": [] },
+        { "name": "runtimeId", "parameterTypes": [] },
+        { "name": "packagePath", "parameterTypes": [] },
+        { "name": "entryClass", "parameterTypes": [] },
+        { "name": "trigger", "parameterTypes": [] },
+        { "name": "bindingIds", "parameterTypes": [] },
+        { "name": "entryPackagePath", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.util.List",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Binding",
+      "methods": [
+        { "name": "bindingId", "parameterTypes": [] },
+        { "name": "capability", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Check",
+      "methods": [
+        { "name": "entryId", "parameterTypes": [] },
+        { "name": "input", "parameterTypes": [] },
+        { "name": "expectedResult", "parameterTypes": [] },
+        { "name": "timeoutMillis", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.util.Map",
+            "java.util.Map",
+            "long"
           ]
         }
       ]
