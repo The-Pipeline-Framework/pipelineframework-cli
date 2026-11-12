@@ -29,7 +29,7 @@ as a repository variable and `SYSTEM_TEST_APP_PRIVATE_KEY` as a secret for a dis
 `pipelineframework`. Grant the coordinator read access to the candidate Maven packages. Owner test jobs receive
 no publication or dispatch credentials.
 
-The nightly/manual `publish-snapshot.yml` publishes only `main`. It needs repository secrets `CENTRAL_USERNAME`,
+The main-push/manual `publish-snapshot.yml` publishes only `main`. It needs repository secrets `CENTRAL_USERNAME`,
 `CENTRAL_PASSWORD`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE`. Do not publish from a feature branch or trigger a release
 without explicit authorisation. `central-publishing` is the sole allowed profile and must not alter the reactor.
 
