@@ -40,6 +40,7 @@
     </modules>
 
     <properties>
+        <tpf.cli.attachDistribution>true</tpf.cli.attachDistribution>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
         <tpf.runtime.version>26.11.2-SNAPSHOT</tpf.runtime.version>
@@ -107,6 +108,9 @@
     <profiles>
         <profile>
             <id>central-publishing</id>
+            <properties>
+                <tpf.cli.attachDistribution>false</tpf.cli.attachDistribution>
+            </properties>
             <build>
                 <plugins>
                     <plugin>

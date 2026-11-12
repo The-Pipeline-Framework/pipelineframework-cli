@@ -17,6 +17,12 @@ assert profiles[0].find("m:modules", NS) is None, "publication must not select a
 plugin = next(plugin for plugin in profiles[0].findall("m:build/m:plugins/m:plugin", NS)
               if plugin.findtext("m:artifactId", namespaces=NS) == "central-publishing-maven-plugin")
 assert plugin.findtext("m:configuration/m:checksums", namespaces=NS) == "required"
+assert pom.findtext("m:properties/m:tpf.cli.attachDistribution", namespaces=NS) == "true"
+assert profiles[0].findtext("m:properties/m:tpf.cli.attachDistribution", namespaces=NS) == "false"
+cli = ET.parse(ROOT / "tpf-cli/pom.xml").getroot()
+assembly = next(plugin for plugin in cli.findall("m:build/m:plugins/m:plugin", NS)
+                if plugin.findtext("m:artifactId", namespaces=NS) == "maven-assembly-plugin")
+assert assembly.findtext("m:executions/m:execution/m:configuration/m:attach", namespaces=NS) == "${tpf.cli.attachDistribution}"
 expected = {"tpf-deployment-api", "tpf-deployment-core",
             "tpf-deployment-target-local", "tpf-deployment-target-cloud", "tpf-cli"}
 modules = {module.text for module in pom.findall("m:modules/m:module", NS)}
