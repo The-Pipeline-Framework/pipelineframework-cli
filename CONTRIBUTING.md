@@ -13,7 +13,7 @@ Build the CLI from source with Java 25:
 ./mvnw verify -Dmaven.repo.local="$PWD/.m2/repository"
 ```
 
-The `tpf-cli` module retains its executable `-all.jar` and JVM development archives. Native builds use the same reactor
+The `tpf-cli` module retains its executable `-all.jar` and JVM development archives. The Central publication profile leaves the JVM ZIP and tarball unattached. Native builds use the same reactor
 and compiled source, with no Maven profile selection.
 
 The ordinary test suite has no container dependency. Run the real OCI registry conformance test explicitly on a
