@@ -851,6 +851,108 @@
             "java.util.List",
             "java.util.Map"
           ]
+        },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.lang.String",
+            "java.util.List",
+            "org.pipelineframework.orchestrator.PipelineBundleCapabilities",
+            "java.util.Map",
+            "java.lang.String",
+            "org.pipelineframework.orchestrator.composition.PipelineCompositionDescriptor",
+            "java.util.List",
+            "java.util.List",
+            "java.util.List",
+            "java.util.Map",
+            "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$PipelineContractDescriptorMixin",
+      "methods": [
+        { "name": "placement", "parameterTypes": [] }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$EmptyPlacementFilter",
+      "methods": [
+        { "name": "<init>", "parameterTypes": [] }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor",
+      "methods": [
+        { "name": "schemaVersion", "parameterTypes": [] },
+        { "name": "invocations", "parameterTypes": [] },
+        { "name": "executionSegments", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.util.List",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor$InvocationPlacement",
+      "methods": [
+        { "name": "callerDefinitionId", "parameterTypes": [] },
+        { "name": "callsiteId", "parameterTypes": [] },
+        { "name": "targetDefinitionId", "parameterTypes": [] },
+        { "name": "recursive", "parameterTypes": [] },
+        { "name": "locality", "parameterTypes": [] },
+        { "name": "module", "parameterTypes": [] },
+        { "name": "runtimeId", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor$ExecutionSegment",
+      "methods": [
+        { "name": "segmentId", "parameterTypes": [] },
+        { "name": "startKind", "parameterTypes": [] },
+        { "name": "resumeAwaitBoundaryId", "parameterTypes": [] },
+        { "name": "module", "parameterTypes": [] },
+        { "name": "runtimeId", "parameterTypes": [] },
+        { "name": "canCompleteRoot", "parameterTypes": [] },
+        { "name": "reachableDefinitions", "parameterTypes": [] },
+        { "name": "nextAwaitBoundaries", "parameterTypes": [] },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.util.List",
+            "java.util.List"
+          ]
         }
       ]
     },
