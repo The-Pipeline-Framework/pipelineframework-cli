@@ -103,6 +103,87 @@
       "type": "groovy.lang.Closure"
     },
     {
+      "type": "io.smallrye.config._private.ConfigLogging_$logger",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.jboss.logging.Logger"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.config._private.ConfigMessages_$bundle",
+      "fields": [
+        {
+          "name": "INSTANCE"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.converters.uni.UniToMultiPublisher$UniToMultiSubscription",
+      "fields": [
+        {
+          "name": "state"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.helpers.UniCallbackSubscriber",
+      "fields": [
+        {
+          "name": "subscription"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.operators.multi.MultiConcatMapOp$MainSubscriber",
+      "fields": [
+        {
+          "name": "demand"
+        },
+        {
+          "name": "state"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.operators.multi.MultiOperatorProcessor",
+      "fields": [
+        {
+          "name": "cancellationRequested"
+        },
+        {
+          "name": "upstream"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.operators.multi.processors.UnicastProcessor",
+      "fields": [
+        {
+          "name": "downstream"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.operators.uni.UniOperatorProcessor",
+      "fields": [
+        {
+          "name": "upstream"
+        }
+      ]
+    },
+    {
+      "type": "io.smallrye.mutiny.operators.uni.builders.UniCreateFromPublisher$PublisherSubscriber",
+      "fields": [
+        {
+          "name": "subscription"
+        }
+      ]
+    },
+    {
       "type": "java.lang.Boolean",
       "jniAccessible": true,
       "methods": [
@@ -567,6 +648,69 @@
       ]
     },
     {
+      "type": "org.jboss.logmanager.CopyOnWriteMap",
+      "fields": [
+        {
+          "name": "map"
+        }
+      ]
+    },
+    {
+      "type": "org.jboss.logmanager.ExtHandler",
+      "fields": [
+        {
+          "name": "handlers"
+        }
+      ]
+    },
+    {
+      "type": "org.jboss.logmanager.ExtLogRecord",
+      "methods": [
+        {
+          "name": "setMarker",
+          "parameterTypes": [
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.jboss.logmanager.LogManager"
+    },
+    {
+      "type": "org.jboss.logmanager.LoggerNode",
+      "fields": [
+        {
+          "name": "handlers"
+        }
+      ]
+    },
+    {
+      "type": "org.jctools.queues.atomic.unpadded.BaseSpscLinkedAtomicUnpaddedArrayQueueConsumerField",
+      "fields": [
+        {
+          "name": "consumerIndex"
+        }
+      ]
+    },
+    {
+      "type": "org.jctools.queues.atomic.unpadded.BaseSpscLinkedAtomicUnpaddedArrayQueueProducerFields",
+      "fields": [
+        {
+          "name": "producerIndex"
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.TpfLocalDevRuntime$DurableCanonicalAwaitStep"
+    },
+    {
+      "type": "org.pipelineframework.TpfLocalDevRuntime$LocalPolyglotCommandStep"
+    },
+    {
+      "type": "org.pipelineframework.TpfLocalDevRuntime$LocalPolyglotQueryStep"
+    },
+    {
       "type": "org.pipelineframework.cli.AuthCommand",
       "fields": [
         {
@@ -659,6 +803,73 @@
       ]
     },
     {
+      "type": "org.pipelineframework.cli.DevCommand",
+      "fields": [
+        {
+          "name": "pipeline"
+        },
+        {
+          "name": "functionHost"
+        },
+        {
+          "name": "connectorHost"
+        },
+        {
+          "name": "secret"
+        },
+        {
+          "name": "dataDir"
+        },
+        {
+          "name": "port"
+        },
+        {
+          "name": "maxRetries"
+        },
+        {
+          "name": "connectorSecrets"
+        },
+        {
+          "name": "allowLoopbackHttp"
+        },
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.GenerateCommand",
+      "fields": [
+        {
+          "name": "pipeline"
+        },
+        {
+          "name": "lang"
+        },
+        {
+          "name": "out"
+        },
+        {
+          "name": "output"
+        },
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "org.pipelineframework.cli.ReleaseCommand",
       "fields": [
         {
@@ -675,15 +886,30 @@
     {
       "type": "org.pipelineframework.cli.ReleasePrepareCommand",
       "fields": [
-        { "name": "contract" },
-        { "name": "version" },
-        { "name": "ingress" },
-        { "name": "worker" },
-        { "name": "output" },
-        { "name": "spec" }
+        {
+          "name": "contract"
+        },
+        {
+          "name": "version"
+        },
+        {
+          "name": "ingress"
+        },
+        {
+          "name": "worker"
+        },
+        {
+          "name": "output"
+        },
+        {
+          "name": "spec"
+        }
       ],
       "methods": [
-        { "name": "<init>", "parameterTypes": [] }
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
       ]
     },
     {
@@ -730,6 +956,37 @@
       ]
     },
     {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$EmptyPlacementFilter",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$PipelineContractDescriptorMixin",
+      "methods": [
+        {
+          "name": "placement",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$PipelineReleaseDescriptorMixin",
+      "methods": [
+        {
+          "name": "deployment",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.context.PipelineContext",
+      "allDeclaredFields": true
+    },
+    {
       "type": "org.pipelineframework.deployment.target.cloud.CloudTargetConfiguration",
       "methods": [
         {
@@ -742,6 +999,101 @@
             "java.lang.String",
             "java.lang.String"
           ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.invocation.PipelineInvocationPath",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.invocation.PipelineInvocationPath$Frame",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.CanonicalFunctionHostManyToOneStep"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.CanonicalFunctionHostOneToManyStep"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.CanonicalFunctionHostStep"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.ExecutionInputShape",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.ExecutionInputSnapshot",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "invocationPath",
+          "parameterTypes": []
+        },
+        {
+          "name": "payload",
+          "parameterTypes": []
+        },
+        {
+          "name": "pipelineContext",
+          "parameterTypes": []
+        },
+        {
+          "name": "shape",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.JsonTransitionPayloadCodec$EncodedExecutionInputSnapshot",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.pipelineframework.orchestrator.ExecutionInputShape",
+            "org.pipelineframework.orchestrator.SerializedTransitionPayload",
+            "java.util.List",
+            "java.util.Optional",
+            "java.util.Optional"
+          ]
+        },
+        {
+          "name": "invocationPath",
+          "parameterTypes": []
+        },
+        {
+          "name": "items",
+          "parameterTypes": []
+        },
+        {
+          "name": "payload",
+          "parameterTypes": []
+        },
+        {
+          "name": "pipelineContext",
+          "parameterTypes": []
+        },
+        {
+          "name": "shape",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.JsonTransitionPayloadCodec$EncodedList",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.util.List"
+          ]
+        },
+        {
+          "name": "items",
+          "parameterTypes": []
         }
       ]
     },
@@ -774,6 +1126,76 @@
             "java.util.Map",
             "java.util.Map"
           ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.SerializedTransitionPayload",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "payload",
+          "parameterTypes": []
+        },
+        {
+          "name": "payloadEncoding",
+          "parameterTypes": []
+        },
+        {
+          "name": "payloadTypeId",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.TransitionWorkerFailureException"
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.TypedDurablePayload",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "int",
+            "byte[]"
+          ]
+        },
+        {
+          "name": "canonicalTypeId",
+          "parameterTypes": []
+        },
+        {
+          "name": "catalogFingerprint",
+          "parameterTypes": []
+        },
+        {
+          "name": "encoding",
+          "parameterTypes": []
+        },
+        {
+          "name": "encodingVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "payload",
+          "parameterTypes": []
+        },
+        {
+          "name": "typeExpressionFingerprint",
+          "parameterTypes": []
         }
       ]
     },
@@ -879,23 +1301,20 @@
       ]
     },
     {
-      "type": "org.pipelineframework.config.pipeline.PipelineJson$PipelineContractDescriptorMixin",
-      "methods": [
-        { "name": "placement", "parameterTypes": [] }
-      ]
-    },
-    {
-      "type": "org.pipelineframework.config.pipeline.PipelineJson$EmptyPlacementFilter",
-      "methods": [
-        { "name": "<init>", "parameterTypes": [] }
-      ]
-    },
-    {
       "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor",
       "methods": [
-        { "name": "schemaVersion", "parameterTypes": [] },
-        { "name": "invocations", "parameterTypes": [] },
-        { "name": "executionSegments", "parameterTypes": [] },
+        {
+          "name": "schemaVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "invocations",
+          "parameterTypes": []
+        },
+        {
+          "name": "executionSegments",
+          "parameterTypes": []
+        },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -907,15 +1326,86 @@
       ]
     },
     {
+      "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor$ExecutionSegment",
+      "methods": [
+        {
+          "name": "segmentId",
+          "parameterTypes": []
+        },
+        {
+          "name": "startKind",
+          "parameterTypes": []
+        },
+        {
+          "name": "resumeAwaitBoundaryId",
+          "parameterTypes": []
+        },
+        {
+          "name": "module",
+          "parameterTypes": []
+        },
+        {
+          "name": "runtimeId",
+          "parameterTypes": []
+        },
+        {
+          "name": "canCompleteRoot",
+          "parameterTypes": []
+        },
+        {
+          "name": "reachableDefinitions",
+          "parameterTypes": []
+        },
+        {
+          "name": "nextAwaitBoundaries",
+          "parameterTypes": []
+        },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "boolean",
+            "java.util.List",
+            "java.util.List"
+          ]
+        }
+      ]
+    },
+    {
       "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor$InvocationPlacement",
       "methods": [
-        { "name": "callerDefinitionId", "parameterTypes": [] },
-        { "name": "callsiteId", "parameterTypes": [] },
-        { "name": "targetDefinitionId", "parameterTypes": [] },
-        { "name": "recursive", "parameterTypes": [] },
-        { "name": "locality", "parameterTypes": [] },
-        { "name": "module", "parameterTypes": [] },
-        { "name": "runtimeId", "parameterTypes": [] },
+        {
+          "name": "callerDefinitionId",
+          "parameterTypes": []
+        },
+        {
+          "name": "callsiteId",
+          "parameterTypes": []
+        },
+        {
+          "name": "targetDefinitionId",
+          "parameterTypes": []
+        },
+        {
+          "name": "recursive",
+          "parameterTypes": []
+        },
+        {
+          "name": "locality",
+          "parameterTypes": []
+        },
+        {
+          "name": "module",
+          "parameterTypes": []
+        },
+        {
+          "name": "runtimeId",
+          "parameterTypes": []
+        },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -931,40 +1421,32 @@
       ]
     },
     {
-      "type": "org.pipelineframework.orchestrator.release.PipelinePlacementDescriptor$ExecutionSegment",
-      "methods": [
-        { "name": "segmentId", "parameterTypes": [] },
-        { "name": "startKind", "parameterTypes": [] },
-        { "name": "resumeAwaitBoundaryId", "parameterTypes": [] },
-        { "name": "module", "parameterTypes": [] },
-        { "name": "runtimeId", "parameterTypes": [] },
-        { "name": "canCompleteRoot", "parameterTypes": [] },
-        { "name": "reachableDefinitions", "parameterTypes": [] },
-        { "name": "nextAwaitBoundaries", "parameterTypes": [] },
-        {
-          "name": "<init>",
-          "parameterTypes": [
-            "java.lang.String",
-            "java.lang.String",
-            "java.lang.String",
-            "java.lang.String",
-            "java.lang.String",
-            "boolean",
-            "java.util.List",
-            "java.util.List"
-          ]
-        }
-      ]
-    },
-    {
       "type": "org.pipelineframework.orchestrator.release.PipelineReleaseArtifactDescriptor",
       "methods": [
-        { "name": "artifactId", "parameterTypes": [] },
-        { "name": "kind", "parameterTypes": [] },
-        { "name": "uri", "parameterTypes": [] },
-        { "name": "digest", "parameterTypes": [] },
-        { "name": "stepIds", "parameterTypes": [] },
-        { "name": "capabilities", "parameterTypes": [] },
+        {
+          "name": "artifactId",
+          "parameterTypes": []
+        },
+        {
+          "name": "kind",
+          "parameterTypes": []
+        },
+        {
+          "name": "uri",
+          "parameterTypes": []
+        },
+        {
+          "name": "digest",
+          "parameterTypes": []
+        },
+        {
+          "name": "stepIds",
+          "parameterTypes": []
+        },
+        {
+          "name": "capabilities",
+          "parameterTypes": []
+        },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -974,36 +1456,6 @@
             "java.lang.String",
             "java.util.List",
             "java.util.List"
-          ]
-        }
-      ]
-    },
-    {
-      "type": "org.pipelineframework.config.pipeline.PipelineJson$PipelineReleaseDescriptorMixin",
-      "methods": [
-        { "name": "deployment", "parameterTypes": [] }
-      ]
-    },
-    {
-      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDescriptor",
-      "methods": [
-        { "name": "schemaVersion", "parameterTypes": [] },
-        { "name": "pipelineId", "parameterTypes": [] },
-        { "name": "contractVersion", "parameterTypes": [] },
-        { "name": "releaseVersion", "parameterTypes": [] },
-        { "name": "compiledTruthArtifactId", "parameterTypes": [] },
-        { "name": "artifacts", "parameterTypes": [] },
-        { "name": "deployment", "parameterTypes": [] },
-        {
-          "name": "<init>",
-          "parameterTypes": [
-            "int",
-            "java.lang.String",
-            "java.lang.String",
-            "java.lang.String",
-            "java.lang.String",
-            "java.util.List",
-            "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment"
           ]
         }
       ]
@@ -1011,10 +1463,22 @@
     {
       "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment",
       "methods": [
-        { "name": "profile", "parameterTypes": [] },
-        { "name": "entries", "parameterTypes": [] },
-        { "name": "bindings", "parameterTypes": [] },
-        { "name": "check", "parameterTypes": [] },
+        {
+          "name": "profile",
+          "parameterTypes": []
+        },
+        {
+          "name": "entries",
+          "parameterTypes": []
+        },
+        {
+          "name": "bindings",
+          "parameterTypes": []
+        },
+        {
+          "name": "check",
+          "parameterTypes": []
+        },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -1027,16 +1491,90 @@
       ]
     },
     {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Binding",
+      "methods": [
+        {
+          "name": "bindingId",
+          "parameterTypes": []
+        },
+        {
+          "name": "capability",
+          "parameterTypes": []
+        },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Check",
+      "methods": [
+        {
+          "name": "entryId",
+          "parameterTypes": []
+        },
+        {
+          "name": "input",
+          "parameterTypes": []
+        },
+        {
+          "name": "expectedResult",
+          "parameterTypes": []
+        },
+        {
+          "name": "timeoutMillis",
+          "parameterTypes": []
+        },
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.util.Map",
+            "java.util.Map",
+            "long"
+          ]
+        }
+      ]
+    },
+    {
       "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Entry",
       "methods": [
-        { "name": "entryId", "parameterTypes": [] },
-        { "name": "artifactId", "parameterTypes": [] },
-        { "name": "runtimeId", "parameterTypes": [] },
-        { "name": "packagePath", "parameterTypes": [] },
-        { "name": "entryClass", "parameterTypes": [] },
-        { "name": "trigger", "parameterTypes": [] },
-        { "name": "bindingIds", "parameterTypes": [] },
-        { "name": "entryPackagePath", "parameterTypes": [] },
+        {
+          "name": "entryId",
+          "parameterTypes": []
+        },
+        {
+          "name": "artifactId",
+          "parameterTypes": []
+        },
+        {
+          "name": "runtimeId",
+          "parameterTypes": []
+        },
+        {
+          "name": "packagePath",
+          "parameterTypes": []
+        },
+        {
+          "name": "entryClass",
+          "parameterTypes": []
+        },
+        {
+          "name": "trigger",
+          "parameterTypes": []
+        },
+        {
+          "name": "bindingIds",
+          "parameterTypes": []
+        },
+        {
+          "name": "entryPackagePath",
+          "parameterTypes": []
+        },
         {
           "name": "<init>",
           "parameterTypes": [
@@ -1053,33 +1591,46 @@
       ]
     },
     {
-      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Binding",
+      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDescriptor",
       "methods": [
-        { "name": "bindingId", "parameterTypes": [] },
-        { "name": "capability", "parameterTypes": [] },
+        {
+          "name": "schemaVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "pipelineId",
+          "parameterTypes": []
+        },
+        {
+          "name": "contractVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "releaseVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "compiledTruthArtifactId",
+          "parameterTypes": []
+        },
+        {
+          "name": "artifacts",
+          "parameterTypes": []
+        },
+        {
+          "name": "deployment",
+          "parameterTypes": []
+        },
         {
           "name": "<init>",
           "parameterTypes": [
+            "int",
             "java.lang.String",
-            "java.lang.String"
-          ]
-        }
-      ]
-    },
-    {
-      "type": "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment$Check",
-      "methods": [
-        { "name": "entryId", "parameterTypes": [] },
-        { "name": "input", "parameterTypes": [] },
-        { "name": "expectedResult", "parameterTypes": [] },
-        { "name": "timeoutMillis", "parameterTypes": [] },
-        {
-          "name": "<init>",
-          "parameterTypes": [
             "java.lang.String",
-            "java.util.Map",
-            "java.util.Map",
-            "long"
+            "java.lang.String",
+            "java.lang.String",
+            "java.util.List",
+            "org.pipelineframework.orchestrator.release.PipelineReleaseDeployment"
           ]
         }
       ]

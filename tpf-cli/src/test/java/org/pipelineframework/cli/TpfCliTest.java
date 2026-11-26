@@ -11,7 +11,7 @@ import picocli.CommandLine;
 class TpfCliTest {
     @Test
     void helpWorksAtEveryCommandLevelWithoutInputs() {
-        for (String path : java.util.List.of("", "release", "release verify", "deploy", "auth", "auth login", "auth status", "auth logout")) {
+        for (String path : java.util.List.of("", "release", "release verify", "deploy", "auth", "auth login", "auth status", "auth logout", "generate", "dev")) {
             for (String help : java.util.List.of("--help", "-h")) {
                 var output = new StringWriter();
                 var errors = new StringWriter();
