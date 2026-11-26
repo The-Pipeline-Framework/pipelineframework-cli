@@ -43,7 +43,7 @@ public final class TpfCli implements Runnable {
     }
 
     public static void main(String[] args) {
-        org.pipelineframework.TpfLocalDevRuntime.initializeNativeBootstrap();
+        io.quarkus.runtime.ssl.SslContextConfiguration.setSslNativeEnabled(true);
         int exitCode = new CommandLine(new TpfCli()).execute(args);
         System.exit(exitCode);
     }
