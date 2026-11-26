@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -19,6 +21,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -43,6 +48,7 @@ import org.pipelineframework.awaitable.AwaitUnitReleaseAcknowledgement;
 import org.pipelineframework.awaitable.AwaitUnitStatus;
 import org.pipelineframework.awaitable.spi.AwaitInteractionStore;
 import org.pipelineframework.awaitable.spi.AwaitUnitStore;
+import org.pipelineframework.command.FileCommandEffectStore;
 import org.pipelineframework.config.pipeline.PipelineJson;
 import org.pipelineframework.orchestrator.CreateExecutionResult;
 import org.pipelineframework.orchestrator.ExecutionCreateCommand;
@@ -54,34 +60,88 @@ import org.pipelineframework.orchestrator.ForeignDispatchIntent;
 import org.pipelineframework.orchestrator.ForeignDispatchIntentStore;
 import org.pipelineframework.orchestrator.JsonTransitionPayloadCodec;
 import org.pipelineframework.orchestrator.SerializedTransitionPayload;
+import org.pipelineframework.query.FileQueryCaptureStore;
 
 /**
  * Crash-safe, zero-JNI disk-backed local dev stores ({@link ExecutionStateStore},
- * {@link AwaitUnitStore}, {@link AwaitInteractionStore}, {@link ForeignDispatchIntentStore})
- * persisted via fsynced atomic JSON snapshots ({@link FileChannel#force(boolean)} +
- * {@link StandardCopyOption#ATOMIC_MOVE}) to survive {@code SIGKILL} in GraalVM native-image
+ * {@link AwaitUnitStore}, {@link AwaitInteractionStore}, {@link ForeignDispatchIntentStore},
+ * {@link FileCommandEffectStore}, {@link FileQueryCaptureStore}) persisted via fsynced atomic
+ * JSON snapshots ({@link FileChannel#force(boolean)} + {@link StandardCopyOption#ATOMIC_MOVE})
+ * under an exclusive data-directory lock to survive {@code SIGKILL} in GraalVM native-image
  * without Docker or LocalStack.
  */
-public final class LocalFileDevStores {
+public final class LocalFileDevStores implements AutoCloseable {
 
-    private static final ObjectMapper JSON = PipelineJson.mapper();
+    private static final ObjectMapper JSON = PipelineJson.mapper().copy()
+        .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+        .enable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN);
+
+    private final FileChannel lockChannel;
+    private final FileLock directoryLock;
 
     public final FileExecutionStateStore executionStore;
     public final FileAwaitUnitStore unitStore;
     public final FileAwaitInteractionStore interactionStore;
     public final FileForeignDispatchIntentStore dispatchIntentStore;
+    public final FileCommandEffectStore commandEffectStore;
+    public final FileQueryCaptureStore queryCaptureStore;
 
     public LocalFileDevStores(Path dataDir, JsonTransitionPayloadCodec payloadCodec) {
         Objects.requireNonNull(dataDir, "dataDir must not be null");
         Objects.requireNonNull(payloadCodec, "payloadCodec must not be null");
-        this.executionStore = new FileExecutionStateStore(
-            new AtomicJsonFile(dataDir.resolve("executions.json")), payloadCodec);
-        this.unitStore = new FileAwaitUnitStore(
-            new AtomicJsonFile(dataDir.resolve("await-units.json")));
-        this.interactionStore = new FileAwaitInteractionStore(
-            new AtomicJsonFile(dataDir.resolve("await-interactions.json")), payloadCodec);
-        this.dispatchIntentStore = new FileForeignDispatchIntentStore(
-            new AtomicJsonFile(dataDir.resolve("dispatch-intents.json")));
+        Path normalized = dataDir.toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(normalized);
+            Path lockFile = normalized.resolve(".dev-store.lock");
+            FileChannel ch = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            FileLock acquired;
+            try {
+                acquired = ch.tryLock();
+            } catch (OverlappingFileLockException e) {
+                ch.close();
+                throw new IllegalStateException(
+                    "Another tpf dev instance is already using data directory: " + normalized, e);
+            }
+            if (acquired == null) {
+                ch.close();
+                throw new IllegalStateException(
+                    "Another tpf dev instance is already using data directory: " + normalized);
+            }
+            this.lockChannel = ch;
+            this.directoryLock = acquired;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed locking local dev data directory " + normalized, e);
+        }
+        try {
+            this.executionStore = new FileExecutionStateStore(
+                new AtomicJsonFile(normalized.resolve("executions.json")), payloadCodec);
+            this.unitStore = new FileAwaitUnitStore(
+                new AtomicJsonFile(normalized.resolve("await-units.json")));
+            this.interactionStore = new FileAwaitInteractionStore(
+                new AtomicJsonFile(normalized.resolve("await-interactions.json")), payloadCodec);
+            this.dispatchIntentStore = new FileForeignDispatchIntentStore(
+                new AtomicJsonFile(normalized.resolve("dispatch-intents.json")));
+            this.commandEffectStore = new FileCommandEffectStore(normalized);
+            this.queryCaptureStore = new FileQueryCaptureStore(normalized);
+        } catch (RuntimeException | Error e) {
+            close();
+            throw e;
+        }
+    }
+
+    @Override
+    public void close() {
+        try {
+            if (directoryLock.isValid()) {
+                directoryLock.release();
+            }
+        } catch (IOException ignored) {
+        } finally {
+            try {
+                lockChannel.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     private static Optional<ObjectNode> encodePayload(JsonTransitionPayloadCodec codec, Object value) {
@@ -119,14 +179,14 @@ public final class LocalFileDevStores {
 
     // --- Crash-safe atomic JSON file helper ---
 
-    static final class AtomicJsonFile {
+    public static final class AtomicJsonFile {
         private final Path target;
 
-        AtomicJsonFile(Path target) {
-            this.target = target;
+        public AtomicJsonFile(Path target) {
+            this.target = Objects.requireNonNull(target, "target must not be null");
         }
 
-        Optional<JsonNode> readIfPresent() {
+        public Optional<JsonNode> readIfPresent() {
             if (!Files.exists(target)) {
                 return Optional.empty();
             }
@@ -141,14 +201,15 @@ public final class LocalFileDevStores {
             }
         }
 
-        void writeAtomically(Object value) {
+        public void writeAtomically(Object value) {
+            Path tmp = null;
             try {
                 Path parent = target.toAbsolutePath().getParent();
                 if (parent != null) {
                     Files.createDirectories(parent);
                 }
                 byte[] bytes = JSON.writeValueAsBytes(value);
-                Path tmp = target.resolveSibling(target.getFileName() + ".tmp." + System.nanoTime());
+                tmp = target.resolveSibling(target.getFileName() + ".tmp." + System.nanoTime());
                 try (FileChannel channel = FileChannel.open(
                     tmp,
                     StandardOpenOption.CREATE,
@@ -161,7 +222,14 @@ public final class LocalFileDevStores {
                     channel.force(true);
                 }
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                tmp = null;
             } catch (IOException e) {
+                if (tmp != null) {
+                    try {
+                        Files.deleteIfExists(tmp);
+                    } catch (IOException ignored) {
+                    }
+                }
                 throw new UncheckedIOException("Failed persisting local dev state " + target, e);
             }
         }
@@ -200,8 +268,10 @@ public final class LocalFileDevStores {
                 record.put("requestDigest", intent.requestDigest());
                 record.put("createdAtEpochMs", intent.createdAtEpochMs());
                 record.putArray("settlements");
+                Map<String, ObjectNode> next = new LinkedHashMap<>(entries);
+                next.put(key, record);
+                persistSnapshot(next);
                 entries.put(key, record);
-                flush();
                 return ReservationOutcome.RESERVED;
             }
         }
@@ -211,22 +281,27 @@ public final class LocalFileDevStores {
             Objects.requireNonNull(intent, "intent must not be null");
             Objects.requireNonNull(status, "status must not be null");
             synchronized (lock) {
-                ObjectNode existing = entries.get(intent.storageKey());
+                String key = intent.storageKey();
+                ObjectNode existing = entries.get(key);
                 if (existing == null) {
                     return;
                 }
-                ArrayNode settlements = (ArrayNode) existing.get("settlements");
+                ObjectNode updated = existing.deepCopy();
+                ArrayNode settlements = (ArrayNode) updated.get("settlements");
                 ObjectNode event = settlements.addObject();
                 event.put("status", status.name());
                 event.put("settledAtEpochMs", settledAtEpochMs);
-                flush();
+                Map<String, ObjectNode> next = new LinkedHashMap<>(entries);
+                next.put(key, updated);
+                persistSnapshot(next);
+                entries.put(key, updated);
             }
         }
 
-        private void flush() {
+        private void persistSnapshot(Map<String, ObjectNode> snapshot) {
             ObjectNode root = JSON.createObjectNode();
             ArrayNode list = root.putArray("intents");
-            entries.values().forEach(list::add);
+            snapshot.values().forEach(list::add);
             file.writeAtomically(root);
         }
 
@@ -282,9 +357,12 @@ public final class LocalFileDevStores {
                         command.nowEpochMs(), command.nowEpochMs(), command.ttlEpochS(),
                         0L, 0, null, null, -1, Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.of("initial-v1"), Optional.empty());
-                    executions.put(scope(command.tenantId(), execId), created);
+                    String execKey = scope(command.tenantId(), execId);
+                    Map<String, ExecutionRecord<Object, Object>> next = new LinkedHashMap<>(executions);
+                    next.put(execKey, created);
+                    persistSnapshot(next);
+                    executions.put(execKey, created);
                     idByKey.put(scopedKey, execId);
-                    flush();
                     return new CreateExecutionResult(created, false);
                 }
             });
@@ -334,8 +412,7 @@ public final class LocalFileDevStores {
                         cur.redriveIntent(), cur.failedStepIndex(), cur.failedCommandId(),
                         cur.redriveTargetCommandId(), cur.redriveReason(), cur.pagingState(),
                         cur.awaitOccurrenceCause(), cur.dispatchPin());
-                    executions.put(key, updated);
-                    flush();
+                    commitExecutionLocked(key, updated);
                     return Optional.of(updated);
                 }
             });
@@ -365,8 +442,7 @@ public final class LocalFileDevStores {
                         cur.redriveIntent(), cur.failedStepIndex(), cur.failedCommandId(),
                         cur.redriveTargetCommandId(), cur.redriveReason(), cur.pagingState(),
                         cur.awaitOccurrenceCause(), cur.dispatchPin());
-                    executions.put(key, updated);
-                    flush();
+                    commitExecutionLocked(key, updated);
                     return Optional.of(updated);
                 }
             });
@@ -428,8 +504,7 @@ public final class LocalFileDevStores {
                         cur.createdAtEpochMs(), nowEpochMs, cur.ttlEpochS(),
                         0L, 0, null, null, -1, Optional.empty(), Optional.empty(), Optional.empty(),
                         cur.pagingState(), cur.awaitOccurrenceCause(), cur.dispatchPin());
-                    executions.put(key, updated);
-                    flush();
+                    commitExecutionLocked(key, updated);
                     return Optional.of(updated);
                 }
             });
@@ -532,17 +607,23 @@ public final class LocalFileDevStores {
                         return Optional.empty();
                     }
                     ExecutionRecord<Object, Object> updated = mutator.apply(cur);
-                    executions.put(key, updated);
-                    flush();
+                    commitExecutionLocked(key, updated);
                     return Optional.of(updated);
                 }
             });
         }
 
-        private void flush() {
+        private void commitExecutionLocked(String key, ExecutionRecord<Object, Object> updated) {
+            Map<String, ExecutionRecord<Object, Object>> next = new LinkedHashMap<>(executions);
+            next.put(key, updated);
+            persistSnapshot(next);
+            executions.put(key, updated);
+        }
+
+        private void persistSnapshot(Map<String, ExecutionRecord<Object, Object>> snapshot) {
             ObjectNode root = JSON.createObjectNode();
             ArrayNode list = root.putArray("executions");
-            for (var r : executions.values()) {
+            for (var r : snapshot.values()) {
                 ObjectNode n = list.addObject();
                 n.put("tenantId", r.tenantId());
                 n.put("executionId", r.executionId());
@@ -643,8 +724,7 @@ public final class LocalFileDevStores {
                         cmd.tenantId(), cmd.unitId(), cmd.executionId(), cmd.stepId(),
                         cmd.stepIndex(), cmd.cardinality(), 0L, AwaitUnitStatus.WAITING_EXTERNAL,
                         null, null, 0, Set.of(), false, cmd.nowEpochMs(), cmd.nowEpochMs(), cmd.ttlEpochS());
-                    units.put(key, created);
-                    flush();
+                    commitUnitLocked(key, created);
                     return created;
                 }
             });
@@ -663,9 +743,13 @@ public final class LocalFileDevStores {
         public Uni<AwaitUnitRecord> importRecord(AwaitUnitRecord record) {
             return Uni.createFrom().item(() -> {
                 synchronized (lock) {
-                    units.putIfAbsent(record.tenantId() + "\0" + record.unitId(), record);
-                    flush();
-                    return units.get(record.tenantId() + "\0" + record.unitId());
+                    String key = record.tenantId() + "\0" + record.unitId();
+                    AwaitUnitRecord existing = units.get(key);
+                    if (existing != null) {
+                        return existing;
+                    }
+                    commitUnitLocked(key, record);
+                    return record;
                 }
             });
         }
@@ -737,17 +821,23 @@ public final class LocalFileDevStores {
                     AwaitUnitRecord cur = units.get(key);
                     if (cur == null) return Optional.empty();
                     AwaitUnitRecord next = fn.apply(cur);
-                    units.put(key, next);
-                    flush();
+                    commitUnitLocked(key, next);
                     return Optional.of(next);
                 }
             });
         }
 
-        private void flush() {
+        private void commitUnitLocked(String key, AwaitUnitRecord updated) {
+            Map<String, AwaitUnitRecord> next = new LinkedHashMap<>(units);
+            next.put(key, updated);
+            persistSnapshot(next);
+            units.put(key, updated);
+        }
+
+        private void persistSnapshot(Map<String, AwaitUnitRecord> snapshot) {
             ObjectNode root = JSON.createObjectNode();
             ArrayNode list = root.putArray("units");
-            for (var u : units.values()) {
+            for (var u : snapshot.values()) {
                 ObjectNode n = list.addObject();
                 n.put("tenantId", u.tenantId());
                 n.put("unitId", u.unitId());
@@ -835,12 +925,12 @@ public final class LocalFileDevStores {
                         cmd.assignee(), cmd.group(), cmd.transportType(), cmd.transportMetadata(),
                         cmd.deadlineEpochMs(), cmd.nowEpochMs(), cmd.nowEpochMs(), cmd.ttlEpochS(),
                         cmd.transportOutputType());
-                    interactions.put(cmd.tenantId() + "\0" + id, created);
-                    idByIdem.put(idemKey, id);
-                    if (cmd.correlationId() != null) {
-                        idByCorr.put(cmd.tenantId() + "\0" + cmd.correlationId(), id);
-                    }
-                    flush();
+                    String storageKey = cmd.tenantId() + "\0" + id;
+                    Map<String, AwaitInteractionRecord> next = new LinkedHashMap<>(interactions);
+                    next.put(storageKey, created);
+                    persistSnapshot(next);
+                    interactions.put(storageKey, created);
+                    indexInteractionLocked(created);
                     return new AwaitCreateResult(created, false);
                 }
             });
@@ -859,9 +949,17 @@ public final class LocalFileDevStores {
         public Uni<AwaitInteractionRecord> importRecord(AwaitInteractionRecord record) {
             return Uni.createFrom().item(() -> {
                 synchronized (lock) {
-                    interactions.putIfAbsent(record.tenantId() + "\0" + record.interactionId(), record);
-                    flush();
-                    return interactions.get(record.tenantId() + "\0" + record.interactionId());
+                    String storageKey = record.tenantId() + "\0" + record.interactionId();
+                    AwaitInteractionRecord existing = interactions.get(storageKey);
+                    if (existing != null) {
+                        return existing;
+                    }
+                    Map<String, AwaitInteractionRecord> next = new LinkedHashMap<>(interactions);
+                    next.put(storageKey, record);
+                    persistSnapshot(next);
+                    interactions.put(storageKey, record);
+                    indexInteractionLocked(record);
+                    return record;
                 }
             });
         }
@@ -890,7 +988,28 @@ public final class LocalFileDevStores {
         @Override
         public Uni<AwaitInteractionPage> findByUnitPage(
             String tenantId, String unitId, int limit, Optional<AwaitInteractionCursor> cursor) {
-            return findByUnit(tenantId, unitId).map(list -> new AwaitInteractionPage(list, Optional.empty()));
+            return Uni.createFrom().item(() -> {
+                synchronized (lock) {
+                    int pageSize = Math.max(1, limit);
+                    String afterId = cursor.map(c -> {
+                        c.requireScope(tenantId, unitId);
+                        return c.position();
+                    }).orElse(null);
+                    List<AwaitInteractionRecord> matching = interactions.values().stream()
+                        .filter(i -> tenantId.equals(i.tenantId()) && unitId.equals(i.unitId()))
+                        .sorted(Comparator.comparing(AwaitInteractionRecord::interactionId))
+                        .filter(i -> afterId == null || i.interactionId().compareTo(afterId) > 0)
+                        .toList();
+                    if (matching.size() > pageSize) {
+                        List<AwaitInteractionRecord> page = matching.subList(0, pageSize);
+                        String lastId = page.getLast().interactionId();
+                        return new AwaitInteractionPage(
+                            List.copyOf(page),
+                            Optional.of(new AwaitInteractionCursor(tenantId, unitId, lastId)));
+                    }
+                    return new AwaitInteractionPage(matching, Optional.empty());
+                }
+            });
         }
 
         @Override
@@ -939,8 +1058,11 @@ public final class LocalFileDevStores {
                         cmd.actor(), cur.assignee(), cur.group(), cur.transportType(), cur.transportMetadata(),
                         cur.deadlineEpochMs(), cur.createdAtEpochMs(), cmd.nowEpochMs(), cur.ttlEpochS(),
                         cur.transportOutputType());
-                    interactions.put(cur.tenantId() + "\0" + cur.interactionId(), completed);
-                    flush();
+                    String storageKey = cur.tenantId() + "\0" + cur.interactionId();
+                    Map<String, AwaitInteractionRecord> next = new LinkedHashMap<>(interactions);
+                    next.put(storageKey, completed);
+                    persistSnapshot(next);
+                    interactions.put(storageKey, completed);
                     return new AwaitCompletionResult(completed, false);
                 }
             });
@@ -1010,6 +1132,9 @@ public final class LocalFileDevStores {
                 synchronized (lock) {
                     return interactions.values().stream()
                         .filter(i -> tenantId.equals(i.tenantId()) && !i.status().terminal())
+                        .filter(i -> assignee == null || assignee.isBlank() || assignee.equals(i.assignee()))
+                        .filter(i -> group == null || group.isBlank() || group.equals(i.group()))
+                        .filter(i -> stepId == null || stepId.isBlank() || stepId.equals(i.stepId()))
                         .limit(Math.max(1, limit))
                         .toList();
                 }
@@ -1026,7 +1151,7 @@ public final class LocalFileDevStores {
                     if (cur == null || cur.version() != expectedVersion || cur.status().terminal()) {
                         return Optional.empty();
                     }
-                    AwaitInteractionRecord next = new AwaitInteractionRecord(
+                    AwaitInteractionRecord nextRec = new AwaitInteractionRecord(
                         cur.tenantId(), cur.executionId(), cur.stepId(), cur.stepIndex(),
                         cur.outputType(), cur.interactionId(), cur.correlationId(), cur.causationId(),
                         cur.idempotencyKey(), cur.version() + 1L, status,
@@ -1034,17 +1159,28 @@ public final class LocalFileDevStores {
                         cur.actor(), cur.assignee(), cur.group(), cur.transportType(), cur.transportMetadata(),
                         cur.deadlineEpochMs(), cur.createdAtEpochMs(), nowEpochMs, cur.ttlEpochS(),
                         cur.transportOutputType());
-                    interactions.put(key, next);
-                    flush();
-                    return Optional.of(next);
+                    Map<String, AwaitInteractionRecord> next = new LinkedHashMap<>(interactions);
+                    next.put(key, nextRec);
+                    persistSnapshot(next);
+                    interactions.put(key, nextRec);
+                    return Optional.of(nextRec);
                 }
             });
         }
 
-        private void flush() {
+        private void indexInteractionLocked(AwaitInteractionRecord i) {
+            if (i.idempotencyKey() != null && !i.idempotencyKey().isBlank()) {
+                idByIdem.put(i.tenantId() + "\0" + i.stepId() + "\0" + i.idempotencyKey(), i.interactionId());
+            }
+            if (i.correlationId() != null && !i.correlationId().isBlank()) {
+                idByCorr.put(i.tenantId() + "\0" + i.correlationId(), i.interactionId());
+            }
+        }
+
+        private void persistSnapshot(Map<String, AwaitInteractionRecord> snapshot) {
             ObjectNode root = JSON.createObjectNode();
             ArrayNode list = root.putArray("interactions");
-            for (var i : interactions.values()) {
+            for (var i : snapshot.values()) {
                 ObjectNode n = list.addObject();
                 n.put("tenantId", i.tenantId());
                 n.put("executionId", i.executionId());
@@ -1065,6 +1201,9 @@ public final class LocalFileDevStores {
                 if (i.assignee() != null) n.put("assignee", i.assignee());
                 if (i.group() != null) n.put("group", i.group());
                 if (i.transportType() != null) n.put("transportType", i.transportType());
+                if (i.transportMetadata() != null && !i.transportMetadata().isEmpty()) {
+                    n.set("transportMetadata", JSON.valueToTree(i.transportMetadata()));
+                }
                 n.put("deadlineEpochMs", i.deadlineEpochMs());
                 n.put("createdAtEpochMs", i.createdAtEpochMs());
                 n.put("updatedAtEpochMs", i.updatedAtEpochMs());
@@ -1077,6 +1216,11 @@ public final class LocalFileDevStores {
         private void load() {
             file.readIfPresent().ifPresent(root -> {
                 for (JsonNode n : root.path("interactions")) {
+                    Map<String, Object> metadata = Map.of();
+                    JsonNode metaNode = n.get("transportMetadata");
+                    if (metaNode != null && metaNode.isObject()) {
+                        metadata = Map.copyOf(JSON.convertValue(metaNode, new TypeReference<Map<String, Object>>() { }));
+                    }
                     AwaitInteractionRecord i = new AwaitInteractionRecord(
                         n.path("tenantId").asText(),
                         n.path("executionId").asText(),
@@ -1097,19 +1241,14 @@ public final class LocalFileDevStores {
                         optString(n, "assignee").orElse(null),
                         optString(n, "group").orElse(null),
                         optString(n, "transportType").orElse(null),
-                        Map.of("transport", "callback"),
+                        metadata,
                         n.path("deadlineEpochMs").asLong(),
                         n.path("createdAtEpochMs").asLong(),
                         n.path("updatedAtEpochMs").asLong(),
                         n.path("ttlEpochS").asLong(),
                         optString(n, "transportOutputType").orElse(null));
                     interactions.put(i.tenantId() + "\0" + i.interactionId(), i);
-                    if (i.idempotencyKey() != null) {
-                        idByIdem.put(i.tenantId() + "\0" + i.stepId() + "\0" + i.idempotencyKey(), i.interactionId());
-                    }
-                    if (i.correlationId() != null) {
-                        idByCorr.put(i.tenantId() + "\0" + i.correlationId(), i.interactionId());
-                    }
+                    indexInteractionLocked(i);
                 }
             });
         }

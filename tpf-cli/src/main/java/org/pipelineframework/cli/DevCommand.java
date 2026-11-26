@@ -18,8 +18,9 @@ import picocli.CommandLine.Spec;
 /**
  * Local {@code tpf dev} command (ADR-0092): embeds TPF's standard Java execution engine
  * ({@code QueueAsyncCoordinator}, {@code PipelineExecutionService}, {@code CanonicalFunctionHostStep},
- * {@code PolyglotConnectorProvider}, {@code AwaitCoordinator}) backed by crash-safe fsynced disk
- * stores for zero-Docker, zero-JDK local development and {@code SIGKILL} recovery.
+ * {@code HttpConnector}, {@code PolyglotConnectorProvider}, {@code AwaitCoordinator}) backed by
+ * crash-safe fsynced disk stores for zero-Docker, zero-JDK local development and {@code SIGKILL}
+ * recovery.
  */
 @Command(
     mixinStandardHelpOptions = true,
@@ -48,7 +49,7 @@ final class DevCommand implements Callable<Integer> {
     @Option(names = "--max-retries", defaultValue = "2", description = "Coordinator max retry attempts for transient failures.")
     private int maxRetries;
 
-    @Option(names = "--connector-secret", description = "Host-owned Tier-2 connector secret pair (key=value; repeatable).")
+    @Option(names = "--connector-secret", description = "Host-owned connector secret pair (key=value; repeatable).")
     private Map<String, String> connectorSecrets = new LinkedHashMap<>();
 
     @Option(names = "--allow-loopback-http", defaultValue = "true", negatable = true,
@@ -67,7 +68,8 @@ final class DevCommand implements Callable<Integer> {
             String effectiveSecret = resolveSecret(secret);
             URI effectiveConnectorHost = connectorHost != null ? connectorHost : functionHost;
             TpfLocalDevRuntime.initializeNativeBootstrap();
-            TpfLocalDevRuntime runtime = new TpfLocalDevRuntime(
+            CountDownLatch stop = new CountDownLatch(1);
+            try (TpfLocalDevRuntime runtime = new TpfLocalDevRuntime(
                 pipeline,
                 functionHost,
                 Optional.of(effectiveConnectorHost),
@@ -75,17 +77,25 @@ final class DevCommand implements Callable<Integer> {
                 dataDir,
                 maxRetries,
                 Map.copyOf(connectorSecrets),
-                allowLoopbackHttp);
-            var server = runtime.startHttp(port, startNanos, out);
-            CountDownLatch stop = new CountDownLatch(1);
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                server.stop(0);
-                stop.countDown();
-            }));
-            stop.await();
-            return 0;
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+                allowLoopbackHttp)) {
+                runtime.startHttp(port, startNanos, out);
+                Thread shutdownHook = new Thread(() -> {
+                    runtime.close();
+                    stop.countDown();
+                }, "tpf-dev-shutdown");
+                Runtime.getRuntime().addShutdownHook(shutdownHook);
+                try {
+                    stop.await();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    try {
+                        Runtime.getRuntime().removeShutdownHook(shutdownHook);
+                    } catch (IllegalStateException ignored) {
+                        // JVM is already shutting down.
+                    }
+                }
+            }
             return 0;
         } catch (Exception e) {
             return CliSupport.failure(e, err);

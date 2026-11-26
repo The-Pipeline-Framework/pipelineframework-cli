@@ -5,7 +5,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -20,17 +20,23 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import org.pipelineframework.awaitable.AwaitCompletionCommand;
 import org.pipelineframework.awaitable.AwaitCoordinator;
@@ -43,13 +49,11 @@ import org.pipelineframework.awaitable.AwaitUnitOccurrence;
 import org.pipelineframework.awaitable.AwaitUnitRecord;
 import org.pipelineframework.awaitable.spi.AwaitInteractionStore;
 import org.pipelineframework.awaitable.spi.AwaitUnitStore;
-import org.pipelineframework.branching.BranchVariantIdentity;
 import org.pipelineframework.checkpoint.CheckpointPublicationService;
 import org.pipelineframework.cli.LocalFileDevStores;
 import org.pipelineframework.command.CommandDescriptor;
 import org.pipelineframework.command.CommandDuplicatePolicy;
 import org.pipelineframework.command.CommandStepSupport;
-import org.pipelineframework.command.InMemoryCommandEffectStore;
 import org.pipelineframework.command.NativeCommandSelector;
 import org.pipelineframework.config.ParallelismPolicy;
 import org.pipelineframework.config.PipelineConfig;
@@ -65,6 +69,7 @@ import org.pipelineframework.config.template.PipelineTemplateConfigLoader;
 import org.pipelineframework.config.template.PipelineTemplateStep;
 import org.pipelineframework.connector.CommandMachineConfirmation;
 import org.pipelineframework.connector.CommandPolicy;
+import org.pipelineframework.connector.ConnectionResolutionException;
 import org.pipelineframework.connector.ConnectionResolutionRequest;
 import org.pipelineframework.connector.ConnectionResolver;
 import org.pipelineframework.connector.ConnectorBindingDefinition;
@@ -73,10 +78,17 @@ import org.pipelineframework.connector.ConnectorBindingRegistry;
 import org.pipelineframework.connector.ConnectorConfigurationDocument;
 import org.pipelineframework.connector.ConnectorOperationIdentity;
 import org.pipelineframework.connector.ConnectorOperationKind;
+import org.pipelineframework.connector.ConnectorProvider;
+import org.pipelineframework.connector.ConnectorProviderId;
 import org.pipelineframework.connector.ConnectorProviderLease;
 import org.pipelineframework.connector.ConnectorRegistry;
 import org.pipelineframework.connector.ConnectorRuntimeContext;
 import org.pipelineframework.connector.ResolvedConnection;
+import org.pipelineframework.connector.http.DevHttpConnectorFactory;
+import org.pipelineframework.connector.http.HttpAuthorizationMaterial;
+import org.pipelineframework.connector.http.HttpAuthorizationProvider;
+import org.pipelineframework.connector.http.HttpClientConnection;
+import org.pipelineframework.connector.http.HttpConnector;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorConnection;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorProvider;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorSpec;
@@ -113,7 +125,6 @@ import org.pipelineframework.orchestrator.controlplane.InMemoryControlPlaneJourn
 import org.pipelineframework.orchestrator.controlplane.SegmentBoundaryLedger;
 import org.pipelineframework.orchestrator.release.PipelineContractDescriptor;
 import org.pipelineframework.processor.util.PipelineContractMetadataGenerator;
-import org.pipelineframework.query.InMemoryQueryCaptureStore;
 import org.pipelineframework.query.NativeQuerySelector;
 import org.pipelineframework.query.QueryStepDescriptor;
 import org.pipelineframework.query.QueryStepSupport;
@@ -126,16 +137,18 @@ import org.pipelineframework.type.CanonicalTypeCatalogue;
 /**
  * Standalone {@code tpf dev} execution engine (ADR-0092).
  *
- * <p>Wires TPF's actual standard execution engine ({@link QueueAsyncCoordinator},
+ * <p>Wires TPF's standard execution engine ({@link QueueAsyncCoordinator},
  * {@link PipelineExecutionService}, {@link PipelineRunner}, {@link PipelineStepExecutor},
  * {@link ExecutionFailureHandler}, {@link AwaitCoordinator}, {@link CanonicalFunctionHostStep},
- * {@link CanonicalFunctionHostOneToManyStep}, {@link CanonicalFunctionHostManyToOneStep}, and
- * Tier-2 {@link PolyglotConnectorProvider}) against crash-safe fsynced disk stores
- * ({@link LocalFileDevStores}) with zero CDI container, zero Mockito, and zero Docker.</p>
+ * {@link CanonicalFunctionHostOneToManyStep}, {@link CanonicalFunctionHostManyToOneStep},
+ * Tier-1 {@link HttpConnector}, and Tier-2 {@link PolyglotConnectorProvider}) against crash-safe
+ * fsynced disk stores ({@link LocalFileDevStores}) with zero CDI container and zero Docker.</p>
  */
-public final class TpfLocalDevRuntime {
+public final class TpfLocalDevRuntime implements AutoCloseable {
 
-    private static final ObjectMapper JSON = PipelineJson.mapper();
+    private static final ObjectMapper JSON = PipelineJson.mapper().copy()
+        .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+        .enable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN);
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
     private static final Duration STEP_TIMEOUT = Duration.ofSeconds(10);
 
@@ -148,9 +161,16 @@ public final class TpfLocalDevRuntime {
     private final QueueAsyncCoordinator coordinator;
     private final PipelineExecutionService executionService;
     private final ClassLoader orderClassLoader;
+    private final Object queueLock = new Object();
     private final Queue<ExecutionWorkItem> workQueue = new ConcurrentLinkedQueue<>();
     private final Queue<DeadLetterEnvelope> deadLetters = new ConcurrentLinkedQueue<>();
     private final Map<Integer, String> awaitOutputTypes = new LinkedHashMap<>();
+    private final ScheduledExecutorService retryScheduler;
+    private final List<ExecutorService> managedExecutors = new ArrayList<>();
+    private final Optional<ConnectorBindingRegistry> bindingRegistry;
+    private final Optional<ConnectorRuntimeContext> connectorRuntimeContext;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private volatile HttpServer httpServer;
 
     public static void initializeNativeBootstrap() {
         io.quarkus.runtime.ssl.SslContextConfiguration.setSslNativeEnabled(true);
@@ -175,165 +195,212 @@ public final class TpfLocalDevRuntime {
         Objects.requireNonNull(dataDir, "dataDir must not be null");
         Objects.requireNonNull(connectorSecrets, "connectorSecrets must not be null");
 
-        this.template = new PipelineTemplateConfigLoader().load(pipelineYaml);
-        PipelineYamlConfig yamlConfig = new PipelineYamlConfigLoader().load(pipelineYaml);
-        String contractJson = new PipelineContractMetadataGenerator().renderPolyglotContract(template, yamlConfig);
-        this.contract = JSON.readValue(contractJson, PipelineContractDescriptor.class);
-
-        JsonNode contractTree = JSON.readTree(contractJson);
-        this.catalogFingerprint = contractTree.path("canonicalCatalogFingerprint").asText();
-        Map<String, Map<String, Object>> canonicalTypesMap = JSON.convertValue(
-            contractTree.path("canonicalTypes"),
-            new TypeReference<>() { });
-        this.catalogue = CanonicalTypeCatalogue.fromCanonicalTypes(canonicalTypesMap);
-        Map<String, String> fps = new LinkedHashMap<>();
-        contractTree.path("canonicalTypes").fields().forEachRemaining(entry ->
-            fps.put(entry.getKey(), entry.getValue().path("definitionFingerprint").asText()));
-        this.definitionFingerprints = Map.copyOf(fps);
+        this.retryScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "tpf-dev-retry-scheduler");
+            t.setDaemon(true);
+            return t;
+        });
 
         JsonTransitionPayloadCodec payloadCodec = new JsonTransitionPayloadCodec();
         this.stores = new LocalFileDevStores(dataDir, payloadCodec);
+        try {
+            this.template = new PipelineTemplateConfigLoader().load(pipelineYaml);
+            PipelineYamlConfig yamlConfig = new PipelineYamlConfigLoader().load(pipelineYaml);
+            String contractJson = new PipelineContractMetadataGenerator().renderPolyglotContract(template, yamlConfig);
+            this.contract = JSON.readValue(contractJson, PipelineContractDescriptor.class);
 
-        PipelineOrchestratorConfig config = DevConfigs.orchestratorConfig(contract.pipelineId(), maxRetries);
-        PipelineStepConfig stepConfig = DevConfigs.stepConfig();
+            JsonNode contractTree = JSON.readTree(contractJson);
+            this.catalogFingerprint = contractTree.path("canonicalCatalogFingerprint").asText();
+            Map<String, Map<String, Object>> canonicalTypesMap = JSON.convertValue(
+                contractTree.path("canonicalTypes"),
+                new TypeReference<>() { });
+            this.catalogue = CanonicalTypeCatalogue.fromCanonicalTypes(canonicalTypesMap);
+            Map<String, String> fps = new LinkedHashMap<>();
+            contractTree.path("canonicalTypes").fields().forEachRemaining(entry ->
+                fps.put(entry.getKey(), entry.getValue().path("definitionFingerprint").asText()));
+            this.definitionFingerprints = Map.copyOf(fps);
 
-        ConnectorSupportHolder connectorHolder = buildPolyglotConnectorSupport(
-            yamlConfig, connectorHostUri.orElse(functionHostUri), sharedSecret, connectorSecrets,
-            allowLoopbackHttp, config);
+            PipelineOrchestratorConfig config = DevConfigs.orchestratorConfig(contract.pipelineId(), maxRetries);
+            PipelineStepConfig stepConfig = DevConfigs.stepConfig();
 
-        List<Object> steps = new ArrayList<>();
-        List<Map<String, Object>> edges = new ArrayList<>();
-        buildStepsAndEdges(
-            yamlConfig, functionHostUri, sharedSecret, allowLoopbackHttp, connectorHolder, steps, edges);
+            ConnectorSupportHolder connectorHolder = buildConnectorSupport(
+                yamlConfig, connectorHostUri.orElse(functionHostUri), sharedSecret, connectorSecrets,
+                allowLoopbackHttp, config);
+            this.bindingRegistry = connectorHolder.bindingRegistry();
+            this.connectorRuntimeContext = connectorHolder.runtimeContext();
 
-        Files.createDirectories(dataDir);
-        Path orderFile = dataDir.resolve("meta-order.json");
-        Files.write(orderFile, JSON.writeValueAsBytes(Map.of(
-            "order", edges.stream().map(e -> e.get("stepClass")).toList(),
-            "boundarySchemaVersion", 1,
-            "stepBoundaries", edges,
-            "definitionBoundaries", List.of())));
-        var orderUrl = orderFile.toUri().toURL();
-        this.orderClassLoader = new ClassLoader(TpfLocalDevRuntime.class.getClassLoader()) {
-            @Override
-            public Enumeration<java.net.URL> getResources(String name) throws IOException {
-                return "META-INF/pipeline/order.json".equals(name)
-                    ? Collections.enumeration(List.of(orderUrl))
-                    : super.getResources(name);
-            }
-        };
+            List<Object> steps = new ArrayList<>();
+            List<Map<String, Object>> edges = new ArrayList<>();
+            buildStepsAndEdges(
+                yamlConfig, functionHostUri, sharedSecret, allowLoopbackHttp, connectorHolder, steps, edges);
 
-        DurableLocalAwaitCoordinator awaitCoordinator = new DurableLocalAwaitCoordinator(
-            stores.interactionStore, stores.unitStore);
+            Files.createDirectories(dataDir);
+            Path orderFile = dataDir.resolve("meta-order.json");
+            Files.write(orderFile, JSON.writeValueAsBytes(Map.of(
+                "order", edges.stream().map(e -> e.get("stepClass")).toList(),
+                "boundarySchemaVersion", 1,
+                "stepBoundaries", edges,
+                "definitionBoundaries", List.of())));
+            var orderUrl = orderFile.toUri().toURL();
+            this.orderClassLoader = new ClassLoader(TpfLocalDevRuntime.class.getClassLoader()) {
+                @Override
+                public Enumeration<java.net.URL> getResources(String name) throws IOException {
+                    return "META-INF/pipeline/order.json".equals(name)
+                        ? Collections.enumeration(List.of(orderUrl))
+                        : super.getResources(name);
+                }
+            };
 
-        WorkDispatcher dispatcher = new WorkDispatcher() {
-            @Override public Uni<Void> enqueueNow(ExecutionWorkItem item) {
-                workQueue.add(item);
-                return Uni.createFrom().voidItem();
-            }
-            @Override public Uni<Void> enqueueDelayed(ExecutionWorkItem item, Duration delay) {
-                // Delayed retries stay in ExecutionStateStore (WAIT_RETRY) until sweepOnce dispatches them when due.
-                return Uni.createFrom().voidItem();
-            }
-            @Override public String providerName() { return "local-dev-queue"; }
-            @Override public Optional<String> startupValidationError() { return Optional.empty(); }
-        };
-        DeadLetterPublisher dlq = new DeadLetterPublisher() {
-            @Override public Uni<Void> publish(DeadLetterEnvelope envelope) {
-                deadLetters.add(envelope);
-                return Uni.createFrom().voidItem();
-            }
-            @Override public Optional<String> startupValidationError() { return Optional.empty(); }
-        };
+            DurableLocalAwaitCoordinator awaitCoordinator = new DurableLocalAwaitCoordinator(
+                stores.interactionStore, stores.unitStore);
 
-        SegmentBoundaryLedger ledger = new SegmentBoundaryLedger(new InMemoryControlPlaneJournal());
-        ExecutionFailureHandler failureHandler = new ExecutionFailureHandler();
-        failureHandler.orchestratorConfig = config;
-        failureHandler.segmentBoundaryLedger = ledger;
+            WorkDispatcher dispatcher = new WorkDispatcher() {
+                @Override public Uni<Void> enqueueNow(ExecutionWorkItem item) {
+                    workQueue.add(item);
+                    return Uni.createFrom().voidItem();
+                }
+                @Override public Uni<Void> enqueueDelayed(ExecutionWorkItem item, Duration delay) {
+                    long delayMs = delay == null ? 50L : Math.max(1L, delay.toMillis());
+                    if (!closed.get()) {
+                        retryScheduler.schedule(() -> {
+                            if (!closed.get()) {
+                                try {
+                                    sweepAndDrain(System.currentTimeMillis());
+                                } catch (RuntimeException ignored) {
+                                }
+                            }
+                        }, delayMs, TimeUnit.MILLISECONDS);
+                    }
+                    return Uni.createFrom().voidItem();
+                }
+                @Override public String providerName() { return "local-dev-queue"; }
+                @Override public Optional<String> startupValidationError() { return Optional.empty(); }
+            };
+            DeadLetterPublisher dlq = new DeadLetterPublisher() {
+                @Override public Uni<Void> publish(DeadLetterEnvelope envelope) {
+                    deadLetters.add(envelope);
+                    return Uni.createFrom().voidItem();
+                }
+                @Override public Optional<String> startupValidationError() { return Optional.empty(); }
+            };
 
-        PipelineReleaseIdentityResolver identityResolver = new PipelineReleaseIdentityResolver() {
-            @Override public Optional<PipelineContractDescriptor> compiledContract() {
-                return Optional.of(contract);
-            }
-        };
+            SegmentBoundaryLedger ledger = new SegmentBoundaryLedger(new InMemoryControlPlaneJournal());
+            ExecutionFailureHandler failureHandler = new ExecutionFailureHandler();
+            failureHandler.orchestratorConfig = config;
+            failureHandler.segmentBoundaryLedger = ledger;
 
-        this.coordinator = new QueueAsyncCoordinator();
-        coordinator.orchestratorConfig = config;
-        coordinator.executionStateStore = stores.executionStore;
-        coordinator.workDispatcher = dispatcher;
-        coordinator.deadLetterPublisher = dlq;
-        coordinator.awaitCoordinator = awaitCoordinator;
-        coordinator.checkpointPublicationService = new CheckpointPublicationService() {
-            @Override public boolean enabled() { return false; }
-            @Override public Uni<Void> publishIfConfigured(ExecutionRecord<Object, Object> r, Object payload) {
-                return Uni.createFrom().voidItem();
-            }
-        };
-        coordinator.objectPublishCompletionService = new ObjectPublishCompletionService() {
-            @Override public boolean enabled() { return false; }
-        };
-        coordinator.executionInputPolicy = new ExecutionInputPolicy();
-        coordinator.executionInputPolicy.orchestratorConfig = config;
-        coordinator.executionResultShapeResolver = new ExecutionResultShapeResolver() {
-            @Override public ExecutionResultShape resolve() { return ExecutionResultShape.SINGLE; }
-        };
-        coordinator.executionFailureHandler = failureHandler;
-        coordinator.segmentBoundaryLedger = ledger;
-        coordinator.controlPlaneAdmissionPolicy = new LocalControlPlaneAdmissionPolicy();
-        coordinator.releaseIdentityResolver = identityResolver;
-        coordinator.transitionPayloadCodec = payloadCodec;
-        coordinator.transitionWorkerExecutor = new TransitionWorkerExecutor(config, new PipelineInvocationRuntime());
+            PipelineReleaseIdentityResolver identityResolver = new PipelineReleaseIdentityResolver() {
+                @Override public Optional<PipelineContractDescriptor> compiledContract() {
+                    return Optional.of(contract);
+                }
+            };
 
-        PipelineConfig pipelineConfig = new PipelineConfig();
-        pipelineConfig.defaults().retryLimit(0);
-        NoOpDevTelemetry telemetry = new NoOpDevTelemetry();
+            this.coordinator = new QueueAsyncCoordinator();
+            coordinator.orchestratorConfig = config;
+            coordinator.executionStateStore = stores.executionStore;
+            coordinator.workDispatcher = dispatcher;
+            coordinator.deadLetterPublisher = dlq;
+            coordinator.awaitCoordinator = awaitCoordinator;
+            coordinator.checkpointPublicationService = new CheckpointPublicationService() {
+                @Override public boolean enabled() { return false; }
+                @Override public Uni<Void> publishIfConfigured(ExecutionRecord<Object, Object> r, Object payload) {
+                    return Uni.createFrom().voidItem();
+                }
+            };
+            coordinator.objectPublishCompletionService = new ObjectPublishCompletionService() {
+                @Override public boolean enabled() { return false; }
+            };
+            coordinator.executionInputPolicy = new ExecutionInputPolicy();
+            coordinator.executionInputPolicy.orchestratorConfig = config;
+            coordinator.executionResultShapeResolver = new ExecutionResultShapeResolver() {
+                @Override public ExecutionResultShape resolve() { return ExecutionResultShape.SINGLE; }
+            };
+            coordinator.executionFailureHandler = failureHandler;
+            coordinator.segmentBoundaryLedger = ledger;
+            coordinator.controlPlaneAdmissionPolicy = new LocalControlPlaneAdmissionPolicy();
+            coordinator.releaseIdentityResolver = identityResolver;
+            coordinator.transitionPayloadCodec = payloadCodec;
+            coordinator.transitionWorkerExecutor = new TransitionWorkerExecutor(config, new PipelineInvocationRuntime());
 
-        PipelineRunner runner = new PipelineRunner();
-        runner.configFactory = new ConfigFactory();
-        runner.pipelineConfig = pipelineConfig;
-        runner.runTelemetry = telemetry;
-        runner.stepTelemetry = telemetry;
-        runner.stepOrderer = new PipelineStepOrderer() {
-            @Override List<Object> orderSteps(List<Object> inputSteps) { return inputSteps; }
-        };
-        runner.parallelismPolicyResolver = new PipelineParallelismPolicyResolver() {
-            @Override ParallelismPolicy resolveParallelismPolicy(PipelineConfig c) { return ParallelismPolicy.SEQUENTIAL; }
-            @Override int resolveMaxConcurrency(PipelineConfig c) { return 1; }
-        };
-        runner.cacheSupportFactory = new PipelineCacheSupportFactory(null, null, "none") {
-            @Override PipelineRunner.CacheReadSupport buildCacheReadSupport() { return null; }
-        };
-        runner.stepExecutor = new PipelineStepExecutor();
+            PipelineConfig pipelineConfig = new PipelineConfig();
+            pipelineConfig.defaults().retryLimit(0);
+            NoOpDevTelemetry telemetry = new NoOpDevTelemetry();
 
-        LocalPipelineControlPlane localControlPlane = new LocalPipelineControlPlane() {
-            @Override public void initializeQueueMode() { }
-        };
-        localControlPlane.queueAsyncCoordinator = coordinator;
+            PipelineRunner runner = new PipelineRunner();
+            runner.configFactory = new ConfigFactory();
+            runner.pipelineConfig = pipelineConfig;
+            runner.runTelemetry = telemetry;
+            runner.stepTelemetry = telemetry;
+            runner.stepOrderer = new PipelineStepOrderer() {
+                @Override List<Object> orderSteps(List<Object> inputSteps) { return inputSteps; }
+            };
+            runner.parallelismPolicyResolver = new PipelineParallelismPolicyResolver() {
+                @Override ParallelismPolicy resolveParallelismPolicy(PipelineConfig c) { return ParallelismPolicy.SEQUENTIAL; }
+                @Override int resolveMaxConcurrency(PipelineConfig c) { return 1; }
+            };
+            runner.cacheSupportFactory = new PipelineCacheSupportFactory(null, null, "none") {
+                @Override PipelineRunner.CacheReadSupport buildCacheReadSupport() { return null; }
+            };
+            runner.stepExecutor = new PipelineStepExecutor();
 
-        this.executionService = new PipelineExecutionService();
-        executionService.orchestratorConfig = config;
-        executionService.pipelineConfig = pipelineConfig;
-        executionService.pipelineRunner = runner;
-        executionService.healthCheckService = new HealthCheckService() {
-            @Override public boolean checkHealthOfDependentServices(List<Object> s) { return true; }
-        };
-        executionService.controlPlane = localControlPlane;
-        executionService.configFactory = new ConfigFactory();
-        executionService.pipelineStepResolver = new PipelineStepResolver() {
-            @Override List<Object> loadPipelineSteps() { return List.copyOf(steps); }
-        };
-        executionService.pipelineStepConfig = stepConfig;
-        executionService.stepOrderer = runner.stepOrderer;
-        executionService.awaitCoordinator = awaitCoordinator;
-        executionService.executionHooks = new ExecutionHooks();
-        executionService.executionInputPolicy = coordinator.executionInputPolicy;
-        executionService.transitionPayloadCodec = payloadCodec;
-        executionService.releaseIdentityResolver = identityResolver;
-        localControlPlane.pipelineExecutionService = executionService;
-        executionService.runStartupHealthChecks();
+            LocalPipelineControlPlane localControlPlane = new LocalPipelineControlPlane() {
+                @Override public void initializeQueueMode() { }
+            };
+            localControlPlane.queueAsyncCoordinator = coordinator;
+
+            this.executionService = new PipelineExecutionService();
+            executionService.orchestratorConfig = config;
+            executionService.pipelineConfig = pipelineConfig;
+            executionService.pipelineRunner = runner;
+            executionService.healthCheckService = new HealthCheckService() {
+                @Override public boolean checkHealthOfDependentServices(List<Object> s) { return true; }
+            };
+            executionService.controlPlane = localControlPlane;
+            executionService.configFactory = new ConfigFactory();
+            executionService.pipelineStepResolver = new PipelineStepResolver() {
+                @Override List<Object> loadPipelineSteps() { return List.copyOf(steps); }
+            };
+            executionService.pipelineStepConfig = stepConfig;
+            executionService.stepOrderer = runner.stepOrderer;
+            executionService.awaitCoordinator = awaitCoordinator;
+            executionService.executionHooks = new ExecutionHooks();
+            executionService.executionInputPolicy = coordinator.executionInputPolicy;
+            executionService.transitionPayloadCodec = payloadCodec;
+            executionService.releaseIdentityResolver = identityResolver;
+            localControlPlane.pipelineExecutionService = executionService;
+            executionService.runStartupHealthChecks();
+        } catch (IOException | RuntimeException | Error e) {
+            close();
+            throw e;
+        }
     }
 
-    private ConnectorSupportHolder buildPolyglotConnectorSupport(
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        HttpServer server = this.httpServer;
+        if (server != null) {
+            server.stop(0);
+            this.httpServer = null;
+        }
+        retryScheduler.shutdownNow();
+        if (bindingRegistry != null && bindingRegistry.isPresent()
+            && connectorRuntimeContext != null && connectorRuntimeContext.isPresent()) {
+            try {
+                bindingRegistry.orElseThrow().stop(connectorRuntimeContext.orElseThrow())
+                    .toCompletableFuture().get(5, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+            }
+        }
+        for (ExecutorService exec : managedExecutors) {
+            exec.shutdownNow();
+        }
+        stores.close();
+    }
+
+    private ConnectorSupportHolder buildConnectorSupport(
         PipelineYamlConfig yamlConfig,
         URI connectorHostUri,
         String sharedSecret,
@@ -342,9 +409,12 @@ public final class TpfLocalDevRuntime {
         PipelineOrchestratorConfig orchestratorConfig
     ) {
         Map<String, PipelineYamlStep> yamlByToken = indexYamlSteps(yamlConfig);
-        List<PolyglotConnectorSpec.QueryOperationSpec> queries = new ArrayList<>();
-        List<PolyglotConnectorSpec.CommandOperationSpec> commands = new ArrayList<>();
+        List<PolyglotConnectorSpec.QueryOperationSpec> polyglotQueries = new ArrayList<>();
+        List<PolyglotConnectorSpec.CommandOperationSpec> polyglotCommands = new ArrayList<>();
         Map<String, ConnectorBindingName> polyglotBindings = new LinkedHashMap<>();
+
+        List<DevHttpConnectorFactory.OperationSpec> httpOps = new ArrayList<>();
+        Map<String, HttpBindingSpec> httpBindings = new LinkedHashMap<>();
 
         for (PipelineTemplateStep step : template.steps()) {
             PipelineYamlStep ys = yamlByToken.get(normalizeToken(step.name()));
@@ -353,30 +423,51 @@ public final class TpfLocalDevRuntime {
             }
             PipelineYamlOperationSelection sel = ys.operationSelection().orElseThrow();
             PipelineYamlConnectorBinding binding = yamlConfig.connectors().get(sel.using());
-            if (binding == null || !"polyglot.connector".equalsIgnoreCase(binding.provider())) {
+            if (binding == null) {
                 continue;
             }
-            polyglotBindings.putIfAbsent(sel.using(), ConnectorBindingName.of(sel.using()));
+            String provider = binding.provider();
             String kind = ys.kind().trim().toLowerCase(Locale.ROOT);
             int major = sel.operationVersion();
-            if ("query".equals(kind)) {
-                queries.add(new PolyglotConnectorSpec.QueryOperationSpec(
-                    sel.operation(), major, step.inputTypeName(), step.outputTypeName()));
-            } else if ("command".equals(kind)) {
-                Map<String, Object> cfg = binding.config() == null ? Map.of() : binding.config();
-                boolean reconcile = Boolean.parseBoolean(String.valueOf(cfg.getOrDefault("reconciliationSupported", false)));
-                Optional<String> refKind = Optional.ofNullable(cfg.get("receiptReferenceKind"))
-                    .map(Object::toString).filter(v -> !v.isBlank());
-                commands.add(new PolyglotConnectorSpec.CommandOperationSpec(
-                    sel.operation(), major, step.inputTypeName(), step.outputTypeName(), reconcile, refKind));
+            Map<String, Object> cfg = binding.config() == null ? Map.of() : binding.config();
+
+            if ("polyglot.connector".equalsIgnoreCase(provider)) {
+                polyglotBindings.putIfAbsent(sel.using(), ConnectorBindingName.of(sel.using()));
+                if ("query".equals(kind)) {
+                    polyglotQueries.add(new PolyglotConnectorSpec.QueryOperationSpec(
+                        sel.operation(), major, step.inputTypeName(), step.outputTypeName()));
+                } else if ("command".equals(kind)) {
+                    boolean reconcile = Boolean.parseBoolean(String.valueOf(cfg.getOrDefault("reconciliationSupported", false)));
+                    Optional<String> refKind = Optional.ofNullable(cfg.get("receiptReferenceKind"))
+                        .map(Object::toString).filter(v -> !v.isBlank());
+                    polyglotCommands.add(new PolyglotConnectorSpec.CommandOperationSpec(
+                        sel.operation(), major, step.inputTypeName(), step.outputTypeName(), reconcile, refKind));
+                }
+            } else if ("http.client".equalsIgnoreCase(provider)) {
+                HttpBindingSpec httpSpec = httpBindings.computeIfAbsent(sel.using(),
+                    name -> parseHttpBindingSpec(name, cfg, connectorSecrets));
+                ConnectorOperationKind opKind = "query".equals(kind)
+                    ? ConnectorOperationKind.QUERY
+                    : ConnectorOperationKind.COMMAND;
+                httpOps.add(parseHttpOperationSpec(
+                    sel.operation(), opKind, major, step.inputTypeName(), step.outputTypeName(),
+                    cfg, httpSpec.authScheme()));
             }
         }
-        if (queries.isEmpty() && commands.isEmpty()) {
-            return new ConnectorSupportHolder(Optional.empty(), Optional.empty());
+
+        if (polyglotQueries.isEmpty() && polyglotCommands.isEmpty() && httpOps.isEmpty()) {
+            return new ConnectorSupportHolder(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         }
 
-        PolyglotConnectorSpec spec = new PolyglotConnectorSpec(catalogue, queries, commands);
-        PolyglotConnectorProvider provider = new PolyglotConnectorProvider(spec);
+        HttpClient pinnedHttpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+        Map<String, HttpBindingSpec> httpByConnection = new LinkedHashMap<>();
+        for (HttpBindingSpec spec : httpBindings.values()) {
+            httpByConnection.put(spec.connectionRef(), spec);
+        }
+
         ConnectionResolver resolver = new ConnectionResolver() {
             @Override
             public <T extends ResolvedConnection> CompletionStage<T> resolve(ConnectionResolutionRequest<T> request) {
@@ -385,31 +476,80 @@ public final class TpfLocalDevRuntime {
                         connectorHostUri, sharedSecret, connectorSecrets, allowLoopbackHttp);
                     return CompletableFuture.completedStage(request.connectionType().cast(conn));
                 }
+                if (request.connectionType().equals(HttpClientConnection.class)) {
+                    HttpBindingSpec spec = httpByConnection.get(request.reference().value());
+                    if (spec == null) {
+                        return CompletableFuture.failedStage(
+                            new ConnectionResolutionException("Unknown HTTP connection: " + request.reference().value()));
+                    }
+                    HttpAuthorizationProvider authProvider = spec.bearerToken().isPresent()
+                        ? authReq -> CompletableFuture.completedStage(new HttpAuthorizationMaterial(
+                            Map.of("Authorization", List.of("Bearer " + spec.bearerToken().orElseThrow())),
+                            Map.of(),
+                            Map.of()))
+                        : HttpAuthorizationProvider.none();
+                    Set<String> schemes = spec.authScheme().map(Set::of).orElseGet(Set::of);
+                    HttpClientConnection conn = new HttpClientConnection(
+                        pinnedHttpClient, spec.baseUri(), schemes, authProvider);
+                    return CompletableFuture.completedStage(request.connectionType().cast(conn));
+                }
                 return CompletableFuture.failedStage(
-                    new IllegalArgumentException("Unknown connection type: " + request.connectionType().getName()));
+                    new ConnectionResolutionException("Unknown connection type: " + request.connectionType().getName()));
             }
         };
+
+        ExecutorService connectorExec = Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "tpf-dev-connector");
+            t.setDaemon(true);
+            return t;
+        });
+        managedExecutors.add(connectorExec);
         ConnectorRuntimeContext runtimeContext = ConnectorRuntimeContext.of(
-            "tpf-local-dev", Executors.newCachedThreadPool(), Clock.systemUTC(), Optional.of(resolver));
+            "tpf-local-dev", connectorExec, Clock.systemUTC(), Optional.of(resolver));
+
+        List<ConnectorProvider<?>> providers = new ArrayList<>();
         List<ConnectorBindingDefinition> bindingDefs = new ArrayList<>();
-        for (ConnectorBindingName bindingName : polyglotBindings.values()) {
-            bindingDefs.add(new ConnectorBindingDefinition(
-                bindingName,
-                PolyglotConnectorProvider.PROVIDER_ID,
-                1,
-                new ConnectorConfigurationDocument(Map.of("connection", "local-polyglot-host"))));
+
+        if (!polyglotQueries.isEmpty() || !polyglotCommands.isEmpty()) {
+            PolyglotConnectorSpec spec = new PolyglotConnectorSpec(catalogue, polyglotQueries, polyglotCommands);
+            providers.add(new PolyglotConnectorProvider(spec));
+            for (ConnectorBindingName bindingName : polyglotBindings.values()) {
+                bindingDefs.add(new ConnectorBindingDefinition(
+                    bindingName,
+                    PolyglotConnectorProvider.PROVIDER_ID,
+                    1,
+                    new ConnectorConfigurationDocument(Map.of("connection", "local-polyglot-host"))));
+            }
         }
-        ConnectorBindingRegistry bindingRegistry = ConnectorBindingRegistry.fromProviders(
+
+        if (!httpOps.isEmpty()) {
+            providers.add(DevHttpConnectorFactory.create(catalogue, httpOps));
+            for (HttpBindingSpec spec : httpBindings.values()) {
+                bindingDefs.add(new ConnectorBindingDefinition(
+                    spec.bindingName(),
+                    HttpConnector.PROVIDER_ID,
+                    1,
+                    new ConnectorConfigurationDocument(Map.of(
+                        "connection", spec.connectionRef(),
+                        "maxRequestBytes", spec.maxRequestBytes(),
+                        "maxResponseBytes", spec.maxResponseBytes()))));
+            }
+        }
+
+        ConnectorBindingRegistry registry = ConnectorBindingRegistry.fromProviders(
             bindingDefs,
-            List.of(provider),
+            providers,
             p -> ConnectorProviderLease.of(p, () -> { }));
-        InMemoryCommandEffectStore effectStore = new InMemoryCommandEffectStore();
-        InMemoryQueryCaptureStore captureStore = new InMemoryQueryCaptureStore();
+        registry.start(runtimeContext).toCompletableFuture().join();
+
         CommandStepSupport commandSupport = new CommandStepSupport(
-            new ConnectorRegistry(List.of()), bindingRegistry, runtimeContext, List.of(effectStore), orchestratorConfig);
+            new ConnectorRegistry(List.of()), registry, runtimeContext,
+            List.of(stores.commandEffectStore), orchestratorConfig);
         QueryStepSupport querySupport = new QueryStepSupport(
-            List.of(), List.of(captureStore), bindingRegistry, runtimeContext);
-        return new ConnectorSupportHolder(Optional.of(querySupport), Optional.of(commandSupport));
+            List.of(), List.of(stores.queryCaptureStore), registry, runtimeContext);
+        return new ConnectorSupportHolder(
+            Optional.of(querySupport), Optional.of(commandSupport),
+            Optional.of(registry), Optional.of(runtimeContext));
     }
 
     private void buildStepsAndEdges(
@@ -444,7 +584,12 @@ public final class TpfLocalDevRuntime {
                 && ys != null && ys.operationSelection().isPresent()) {
                 PipelineYamlOperationSelection sel = ys.operationSelection().orElseThrow();
                 PipelineYamlConnectorBinding binding = yamlConfig.connectors().get(sel.using());
-                if (binding != null && "polyglot.connector".equalsIgnoreCase(binding.provider())) {
+                boolean isPolyglot = binding != null && "polyglot.connector".equalsIgnoreCase(binding.provider());
+                boolean isHttp = binding != null && "http.client".equalsIgnoreCase(binding.provider());
+                if (isPolyglot || isHttp) {
+                    ConnectorProviderId providerId = isHttp
+                        ? HttpConnector.PROVIDER_ID
+                        : PolyglotConnectorProvider.PROVIDER_ID;
                     int major = sel.operationVersion();
                     if ("query".equals(kind)) {
                         QueryStepDescriptor desc = QueryStepDescriptor.nativeQuery(
@@ -455,32 +600,34 @@ public final class TpfLocalDevRuntime {
                             new NativeQuerySelector(
                                 ConnectorBindingName.of(sel.using()),
                                 new ConnectorOperationIdentity(
-                                    PolyglotConnectorProvider.PROVIDER_ID, sel.operation(),
+                                    providerId, sel.operation(),
                                     ConnectorOperationKind.QUERY, major),
                                 1),
                             Map.of());
-                        instance = new LocalPolyglotQueryStep(
+                        instance = new LocalConnectorQueryStep(
                             connectorHolder.querySupport().orElseThrow(),
                             desc, outputType, outputFp, catalogFingerprint);
                     } else {
                         Map<String, Object> cfg = binding.config() == null ? Map.of() : binding.config();
-                        boolean reconcile = Boolean.parseBoolean(String.valueOf(cfg.getOrDefault("reconciliationSupported", false)));
+                        boolean reconcile = !isHttp
+                            && Boolean.parseBoolean(String.valueOf(cfg.getOrDefault("reconciliationSupported", false)));
+                        boolean hasIdempotency = !isHttp || hasHttpIdempotencyHeader(cfg, sel.operation());
                         CommandDescriptor desc = CommandDescriptor.nativeCommand(
                             stepId,
                             new NativeCommandSelector(
                                 Optional.of(ConnectorBindingName.of(sel.using())),
                                 new ConnectorOperationIdentity(
-                                    PolyglotConnectorProvider.PROVIDER_ID, sel.operation(),
+                                    providerId, sel.operation(),
                                     ConnectorOperationKind.COMMAND, major),
                                 1,
-                                new CommandPolicy(true, true, reconcile, Optional.empty(),
+                                new CommandPolicy(hasIdempotency, hasIdempotency, reconcile, Optional.empty(),
                                     Optional.of(CommandMachineConfirmation.PROVIDER_ACKNOWLEDGED), false)),
                             JsonNode.class.getName(),
                             JsonNode.class.getName(),
                             stepId + "-id",
                             CommandDuplicatePolicy.RETURN_RECORDED,
                             Map.of());
-                        instance = new LocalPolyglotCommandStep(
+                        instance = new LocalConnectorCommandStep(
                             connectorHolder.commandSupport().orElseThrow(),
                             desc, stepId, outputType, outputFp, catalogFingerprint);
                     }
@@ -526,38 +673,56 @@ public final class TpfLocalDevRuntime {
     }
 
     public void drainQueue() {
-        int safety = 0;
-        while (!workQueue.isEmpty() && safety++ < 50) {
-            ExecutionWorkItem item = workQueue.poll();
-            if (item == null) {
-                break;
-            }
-            PipelineTransitionWorker tcclWorker = new PipelineTransitionWorker() {
-                @Override
-                public Uni<TransitionResultEnvelope> executeTransition(TransitionCommandEnvelope command) {
-                    ClassLoader previous = Thread.currentThread().getContextClassLoader();
-                    Thread.currentThread().setContextClassLoader(orderClassLoader);
-                    try {
-                        return executionService.executeTransition(command);
-                    } finally {
-                        Thread.currentThread().setContextClassLoader(previous);
-                    }
+        synchronized (queueLock) {
+            int safety = 0;
+            while (!workQueue.isEmpty() && safety++ < 50) {
+                ExecutionWorkItem item = workQueue.poll();
+                if (item == null) {
+                    break;
                 }
-                @Override public String providerName() { return executionService.providerName(); }
-            };
-            ClassLoader previous = Thread.currentThread().getContextClassLoader();
-            Thread.currentThread().setContextClassLoader(orderClassLoader);
-            try {
-                coordinator.processExecutionWorkItem(item, tcclWorker).await().atMost(TIMEOUT);
-            } finally {
-                Thread.currentThread().setContextClassLoader(previous);
+                PipelineTransitionWorker tcclWorker = new PipelineTransitionWorker() {
+                    @Override
+                    public Uni<TransitionResultEnvelope> executeTransition(TransitionCommandEnvelope command) {
+                        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+                        Thread.currentThread().setContextClassLoader(orderClassLoader);
+                        try {
+                            return executionService.executeTransition(command);
+                        } finally {
+                            Thread.currentThread().setContextClassLoader(previous);
+                        }
+                    }
+                    @Override public String providerName() { return executionService.providerName(); }
+                };
+                ClassLoader previous = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader(orderClassLoader);
+                try {
+                    coordinator.processExecutionWorkItem(item, tcclWorker).await().atMost(TIMEOUT);
+                } finally {
+                    Thread.currentThread().setContextClassLoader(previous);
+                }
             }
+        }
+    }
+
+    private Map<String, Object> sweepAndDrain(long nowEpochMs) {
+        synchronized (queueLock) {
+            var result = coordinator.sweepOnce(nowEpochMs).await().atMost(TIMEOUT);
+            drainQueue();
+            return Map.of(
+                "dueDispatched", result.dispatchedExecutionCount(),
+                "timedOut", result.timedOutAwaitCount());
         }
     }
 
     public HttpServer startHttp(int port, long startupStartNanos, PrintWriter out) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
-        server.setExecutor(Executors.newFixedThreadPool(4));
+        ExecutorService httpExec = Executors.newFixedThreadPool(4, r -> {
+            Thread t = new Thread(r, "tpf-dev-http");
+            t.setDaemon(true);
+            return t;
+        });
+        managedExecutors.add(httpExec);
+        server.setExecutor(httpExec);
         server.createContext("/health", ex -> respond(ex, 200, Map.of(
             "status", "UP",
             "pid", ProcessHandle.current().pid(),
@@ -568,6 +733,7 @@ public final class TpfLocalDevRuntime {
         server.createContext("/awaits/complete", this::handleAwaitComplete);
         server.createContext("/sweep", this::handleSweep);
         server.start();
+        this.httpServer = server;
         long startupMs = (System.nanoTime() - startupStartNanos) / 1_000_000L;
         out.println("READY " + server.getAddress().getPort() + " " + startupMs);
         out.flush();
@@ -590,9 +756,13 @@ public final class TpfLocalDevRuntime {
                     JsonDurablePayloadCodec.ENCODING,
                     JsonDurablePayloadCodec.ENCODING_VERSION,
                     canonicalBytes);
-                var accepted = coordinator.executePipelineAsync(input, tenant, key, false).await().atMost(TIMEOUT);
-                drainQueue();
-                respond(ex, 200, executionView(tenant, accepted.executionId()));
+                Map<String, Object> view;
+                synchronized (queueLock) {
+                    var accepted = coordinator.executePipelineAsync(input, tenant, key, false).await().atMost(TIMEOUT);
+                    drainQueue();
+                    view = executionView(tenant, accepted.executionId());
+                }
+                respond(ex, 200, view);
                 return;
             }
             if ("GET".equals(ex.getRequestMethod()) && path.startsWith("/runs/")) {
@@ -610,14 +780,31 @@ public final class TpfLocalDevRuntime {
 
     private void handleAwaitComplete(HttpExchange ex) throws IOException {
         try {
+            if (!"POST".equals(ex.getRequestMethod())) {
+                ex.getResponseHeaders().set("Allow", "POST");
+                respond(ex, 405, Map.of("error", "method_not_allowed"));
+                return;
+            }
             JsonNode body = JSON.readTree(ex.getRequestBody().readAllBytes());
             String tenant = body.path("tenantId").asText("default");
-            String interactionId = body.path("interactionId").asText();
-            String correlationId = body.path("correlationId").asText();
+            String interactionId = body.path("interactionId").asText("");
+            String correlationId = body.path("correlationId").asText("");
             String completionId = body.path("completionId").asText("comp-" + System.nanoTime());
-            AwaitInteractionRecord interaction = stores.interactionStore.get(tenant, interactionId)
-                .await().atMost(TIMEOUT)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown Await interactionId: " + interactionId));
+
+            Optional<AwaitInteractionRecord> found = !interactionId.isBlank()
+                ? stores.interactionStore.get(tenant, interactionId).await().atMost(TIMEOUT)
+                : (!correlationId.isBlank()
+                    ? stores.interactionStore.findByCorrelation(tenant, correlationId).await().atMost(TIMEOUT)
+                    : Optional.empty());
+            AwaitInteractionRecord interaction = found.orElseThrow(() -> new IllegalArgumentException(
+                !interactionId.isBlank()
+                    ? "Unknown Await interactionId: " + interactionId
+                    : "Unknown Await correlationId: " + correlationId));
+            String resolvedInteractionId = interaction.interactionId();
+            String resolvedCorrelationId = !correlationId.isBlank()
+                ? correlationId
+                : (interaction.correlationId() == null ? "" : interaction.correlationId());
+
             String outputType = awaitOutputTypes.getOrDefault(interaction.stepIndex(), interaction.outputType());
             TypedDurablePayload responsePayload = new TypedDurablePayload(
                 outputType,
@@ -626,12 +813,15 @@ public final class TpfLocalDevRuntime {
                 JsonDurablePayloadCodec.ENCODING,
                 JsonDurablePayloadCodec.ENCODING_VERSION,
                 JSON.writeValueAsBytes(body.path("payload")));
-            var result = coordinator.completeAwait(new AwaitCompletionCommand(
-                tenant, interactionId, correlationId, completionId, responsePayload,
-                "local-dev-completer", System.currentTimeMillis())).await().atMost(TIMEOUT);
-            drainQueue();
-            Map<String, Object> resp = new LinkedHashMap<>(executionView(tenant, result.record().executionId()));
-            resp.put("duplicate", result.duplicate());
+            Map<String, Object> resp;
+            synchronized (queueLock) {
+                var result = coordinator.completeAwait(new AwaitCompletionCommand(
+                    tenant, resolvedInteractionId, resolvedCorrelationId, completionId, responsePayload,
+                    "local-dev-completer", System.currentTimeMillis())).await().atMost(TIMEOUT);
+                drainQueue();
+                resp = new LinkedHashMap<>(executionView(tenant, result.record().executionId()));
+                resp.put("duplicate", result.duplicate());
+            }
             respond(ex, 200, resp);
         } catch (Exception e) {
             respond(ex, 500, Map.of("error", e.getClass().getSimpleName(), "message", String.valueOf(e.getMessage())));
@@ -640,14 +830,15 @@ public final class TpfLocalDevRuntime {
 
     private void handleSweep(HttpExchange ex) throws IOException {
         try {
+            if (!"POST".equals(ex.getRequestMethod())) {
+                ex.getResponseHeaders().set("Allow", "POST");
+                respond(ex, 405, Map.of("error", "method_not_allowed"));
+                return;
+            }
             byte[] raw = ex.getRequestBody().readAllBytes();
             JsonNode body = raw.length == 0 ? JSON.createObjectNode() : JSON.readTree(raw);
             long now = body.path("nowEpochMs").asLong(System.currentTimeMillis());
-            var result = coordinator.sweepOnce(now).await().atMost(TIMEOUT);
-            drainQueue();
-            respond(ex, 200, Map.of(
-                "dueDispatched", result.dispatchedExecutionCount(),
-                "timedOut", result.timedOutAwaitCount()));
+            respond(ex, 200, sweepAndDrain(now));
         } catch (Exception e) {
             respond(ex, 500, Map.of("error", e.getClass().getSimpleName(), "message", String.valueOf(e.getMessage())));
         }
@@ -672,8 +863,16 @@ public final class TpfLocalDevRuntime {
             List<AwaitInteractionRecord> ints = stores.interactionStore.findByUnit(tenantId, rec.awaitUnitId())
                 .await().atMost(TIMEOUT);
             if (!ints.isEmpty()) {
-                view.put("interactionId", ints.getFirst().interactionId());
-                view.put("correlationId", ints.getFirst().correlationId());
+                AwaitInteractionRecord first = ints.getFirst();
+                view.put("interactionId", first.interactionId());
+                view.put("correlationId", first.correlationId());
+                Object reqPayload = first.requestPayload();
+                Object decodedReq = reqPayload instanceof SerializedTransitionPayload s
+                    ? coordinator.transitionPayloadCodec.decode(s)
+                    : reqPayload;
+                if (decodedReq instanceof TypedDurablePayload typedReq) {
+                    view.put("awaitRequestPayload", JSON.readTree(typedReq.payload()));
+                }
             }
         }
         if (rec.status() == ExecutionStatus.SUCCEEDED) {
@@ -687,6 +886,93 @@ public final class TpfLocalDevRuntime {
             }
         }
         return view;
+    }
+
+    private static HttpBindingSpec parseHttpBindingSpec(
+        String bindingName,
+        Map<String, Object> cfg,
+        Map<String, String> connectorSecrets
+    ) {
+        String rawBaseUri = optionalString(cfg.get("baseUri"))
+            .orElseThrow(() -> new IllegalArgumentException(
+                "http.client binding '" + bindingName + "' requires config.baseUri"));
+        URI baseUri = URI.create(rawBaseUri);
+        String connectionRef = optionalString(cfg.get("connection")).orElse(bindingName);
+        Optional<String> secretKey = optionalString(cfg.get("bearerTokenSecret"));
+        Optional<String> bearerToken = secretKey
+            .flatMap(k -> Optional.ofNullable(connectorSecrets.get(k)))
+            .or(() -> optionalString(cfg.get("bearerToken")));
+        Optional<String> authScheme = optionalString(cfg.get("authScheme"))
+            .or(() -> bearerToken.isPresent() ? Optional.of("bearer") : Optional.empty());
+        int maxRequestBytes = parsePositiveInt(cfg.get("maxRequestBytes"), 65536);
+        int maxResponseBytes = parsePositiveInt(cfg.get("maxResponseBytes"), 65536);
+        return new HttpBindingSpec(
+            ConnectorBindingName.of(bindingName), connectionRef, baseUri,
+            authScheme, bearerToken, maxRequestBytes, maxResponseBytes);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DevHttpConnectorFactory.OperationSpec parseHttpOperationSpec(
+        String operationId,
+        ConnectorOperationKind kind,
+        int majorVersion,
+        String inputType,
+        String outputType,
+        Map<String, Object> bindingCfg,
+        Optional<String> defaultAuthScheme
+    ) {
+        Map<String, Object> opCfg = Map.of();
+        Object opsObj = bindingCfg.get("operations");
+        if (opsObj instanceof Map<?, ?> opsMap && opsMap.get(operationId) instanceof Map<?, ?> found) {
+            opCfg = (Map<String, Object>) found;
+        }
+        String defaultMethod = kind == ConnectorOperationKind.QUERY ? "GET" : "POST";
+        String method = optionalString(opCfg.get("method")).orElse(defaultMethod);
+        String path = optionalString(opCfg.get("path"))
+            .orElse("/" + operationId.replace('.', '/'));
+        List<String> queryParams = parseStringList(opCfg.get("queryParams"));
+        List<String> headerParams = parseStringList(opCfg.get("headerParams"));
+        Optional<String> idempotencyHeader = optionalString(opCfg.get("idempotencyHeader"));
+        String successStatus = optionalString(opCfg.get("successStatus")).orElse("200");
+        Optional<String> authScheme = optionalString(opCfg.get("authScheme")).or(() -> defaultAuthScheme);
+        return new DevHttpConnectorFactory.OperationSpec(
+            operationId, kind, majorVersion, inputType, outputType,
+            method, path, queryParams, headerParams, idempotencyHeader, successStatus, authScheme);
+    }
+
+    private static boolean hasHttpIdempotencyHeader(Map<String, Object> bindingCfg, String operationId) {
+        Object opsObj = bindingCfg.get("operations");
+        if (opsObj instanceof Map<?, ?> opsMap && opsMap.get(operationId) instanceof Map<?, ?> opCfg) {
+            return optionalString(opCfg.get("idempotencyHeader")).isPresent();
+        }
+        return false;
+    }
+
+    private static Optional<String> optionalString(Object raw) {
+        if (raw == null) {
+            return Optional.empty();
+        }
+        String text = raw.toString().trim();
+        return text.isEmpty() ? Optional.empty() : Optional.of(text);
+    }
+
+    private static List<String> parseStringList(Object raw) {
+        if (raw instanceof List<?> list) {
+            return list.stream().filter(Objects::nonNull).map(Object::toString).toList();
+        }
+        return List.of();
+    }
+
+    private static int parsePositiveInt(Object raw, int defaultValue) {
+        if (raw == null) {
+            return defaultValue;
+        }
+        try {
+            int parsed = Integer.parseInt(raw.toString().trim());
+            return parsed > 0 ? parsed : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     private static void respond(HttpExchange ex, int status, Object body) throws IOException {
@@ -732,13 +1018,26 @@ public final class TpfLocalDevRuntime {
         };
     }
 
-    private record ConnectorSupportHolder(
-        Optional<QueryStepSupport> querySupport,
-        Optional<CommandStepSupport> commandSupport
+    private record HttpBindingSpec(
+        ConnectorBindingName bindingName,
+        String connectionRef,
+        URI baseUri,
+        Optional<String> authScheme,
+        Optional<String> bearerToken,
+        int maxRequestBytes,
+        int maxResponseBytes
     ) {
     }
 
-    private static final class LocalPolyglotQueryStep extends ConfigurableStep
+    private record ConnectorSupportHolder(
+        Optional<QueryStepSupport> querySupport,
+        Optional<CommandStepSupport> commandSupport,
+        Optional<ConnectorBindingRegistry> bindingRegistry,
+        Optional<ConnectorRuntimeContext> runtimeContext
+    ) {
+    }
+
+    private static final class LocalConnectorQueryStep extends ConfigurableStep
         implements StepOneToOne<TypedDurablePayload, TypedDurablePayload> {
         private final QueryStepSupport querySupport;
         private final QueryStepDescriptor descriptor;
@@ -746,7 +1045,7 @@ public final class TpfLocalDevRuntime {
         private final String outputFingerprint;
         private final String catalogFingerprint;
 
-        private LocalPolyglotQueryStep(
+        private LocalConnectorQueryStep(
             QueryStepSupport querySupport,
             QueryStepDescriptor descriptor,
             String outputType,
@@ -781,7 +1080,7 @@ public final class TpfLocalDevRuntime {
         }
     }
 
-    private static final class LocalPolyglotCommandStep extends ConfigurableStep
+    private static final class LocalConnectorCommandStep extends ConfigurableStep
         implements StepOneToOne<TypedDurablePayload, TypedDurablePayload> {
         private final CommandStepSupport commandSupport;
         private final CommandDescriptor descriptor;
@@ -790,7 +1089,7 @@ public final class TpfLocalDevRuntime {
         private final String outputFingerprint;
         private final String catalogFingerprint;
 
-        private LocalPolyglotCommandStep(
+        private LocalConnectorCommandStep(
             CommandStepSupport commandSupport,
             CommandDescriptor descriptor,
             String stepId,
@@ -939,7 +1238,7 @@ public final class TpfLocalDevRuntime {
                 @Override public long leaseMs() { return Duration.ofMinutes(2).toMillis(); }
                 @Override public int maxRetries() { return maxRetries; }
                 @Override public Optional<Duration> maxCircuitDeferral() { return Optional.empty(); }
-                @Override public Duration retryDelay() { return Duration.ofMillis(10); }
+                @Override public Duration retryDelay() { return Duration.ofMillis(150); }
                 @Override public double retryMultiplier() { return 1.0d; }
                 @Override public Duration sweepInterval() { return Duration.ofSeconds(30); }
                 @Override public int sweepLimit() { return 50; }

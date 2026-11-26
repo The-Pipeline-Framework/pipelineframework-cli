@@ -1,6 +1,15 @@
 {
   "reflection": [
     {
+      "type": "[Lorg.pipelineframework.command.CommandEffectRecordCodec$PersistedAttemptSnapshotV3;"
+    },
+    {
+      "type": "[Lorg.pipelineframework.connector.CommandReference;"
+    },
+    {
+      "type": "[Lorg.pipelineframework.connector.ConnectionRef;"
+    },
+    {
       "type": "com.fasterxml.jackson.databind.deser.Deserializers[]"
     },
     {
@@ -705,10 +714,10 @@
       "type": "org.pipelineframework.TpfLocalDevRuntime$DurableCanonicalAwaitStep"
     },
     {
-      "type": "org.pipelineframework.TpfLocalDevRuntime$LocalPolyglotCommandStep"
+      "type": "org.pipelineframework.TpfLocalDevRuntime$LocalConnectorCommandStep"
     },
     {
-      "type": "org.pipelineframework.TpfLocalDevRuntime$LocalPolyglotQueryStep"
+      "type": "org.pipelineframework.TpfLocalDevRuntime$LocalConnectorQueryStep"
     },
     {
       "type": "org.pipelineframework.cli.AuthCommand",
@@ -956,6 +965,300 @@
       ]
     },
     {
+      "type": "org.pipelineframework.command.CommandAttemptPurpose",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.command.CommandEffectRecordCodec$PersistedAttemptSnapshotV3",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "int",
+            "java.lang.String",
+            "org.pipelineframework.command.CommandAttemptPurpose",
+            "org.pipelineframework.command.CommandEffectStatus",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional",
+            "long",
+            "long",
+            "java.util.Optional",
+            "java.util.Optional"
+          ]
+        },
+        {
+          "name": "attemptId",
+          "parameterTypes": []
+        },
+        {
+          "name": "attemptNumber",
+          "parameterTypes": []
+        },
+        {
+          "name": "createdAtEpochMs",
+          "parameterTypes": []
+        },
+        {
+          "name": "errorClass",
+          "parameterTypes": []
+        },
+        {
+          "name": "errorMessage",
+          "parameterTypes": []
+        },
+        {
+          "name": "executionId",
+          "parameterTypes": []
+        },
+        {
+          "name": "occurrenceId",
+          "parameterTypes": []
+        },
+        {
+          "name": "outcome",
+          "parameterTypes": []
+        },
+        {
+          "name": "output",
+          "parameterTypes": []
+        },
+        {
+          "name": "purpose",
+          "parameterTypes": []
+        },
+        {
+          "name": "reason",
+          "parameterTypes": []
+        },
+        {
+          "name": "reconciliationReceipt",
+          "parameterTypes": []
+        },
+        {
+          "name": "recoveryBinding",
+          "parameterTypes": []
+        },
+        {
+          "name": "status",
+          "parameterTypes": []
+        },
+        {
+          "name": "updatedAtEpochMs",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.command.CommandEffectRecordCodec$PersistedSnapshotV3",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "org.pipelineframework.command.CommandEffectStatus",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.List",
+            "long",
+            "long",
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "attempts",
+          "parameterTypes": []
+        },
+        {
+          "name": "command",
+          "parameterTypes": []
+        },
+        {
+          "name": "commandId",
+          "parameterTypes": []
+        },
+        {
+          "name": "createdAtEpochMs",
+          "parameterTypes": []
+        },
+        {
+          "name": "errorClass",
+          "parameterTypes": []
+        },
+        {
+          "name": "errorMessage",
+          "parameterTypes": []
+        },
+        {
+          "name": "executionId",
+          "parameterTypes": []
+        },
+        {
+          "name": "input",
+          "parameterTypes": []
+        },
+        {
+          "name": "inputDeclaredType",
+          "parameterTypes": []
+        },
+        {
+          "name": "outcome",
+          "parameterTypes": []
+        },
+        {
+          "name": "output",
+          "parameterTypes": []
+        },
+        {
+          "name": "outputDeclaredType",
+          "parameterTypes": []
+        },
+        {
+          "name": "schemaVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "status",
+          "parameterTypes": []
+        },
+        {
+          "name": "stepId",
+          "parameterTypes": []
+        },
+        {
+          "name": "tenantId",
+          "parameterTypes": []
+        },
+        {
+          "name": "updatedAtEpochMs",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.command.CommandEffectRecordCodec$TypedValueSnapshot",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "com.fasterxml.jackson.databind.JsonNode"
+          ]
+        },
+        {
+          "name": "encoding",
+          "parameterTypes": []
+        },
+        {
+          "name": "runtimeType",
+          "parameterTypes": []
+        },
+        {
+          "name": "value",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.command.CommandEffectStatus",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.command.CommandOutcomeSnapshot",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.pipelineframework.connector.ConnectorOperationIdentity",
+            "int",
+            "org.pipelineframework.connector.ConnectorConfigurationSnapshot",
+            "org.pipelineframework.command.CommandEffectStatus",
+            "java.lang.String",
+            "java.util.Set",
+            "org.pipelineframework.connector.CommandMachineConfirmation",
+            "boolean",
+            "java.util.List"
+          ]
+        },
+        {
+          "name": "configuration",
+          "parameterTypes": []
+        },
+        {
+          "name": "flags",
+          "parameterTypes": []
+        },
+        {
+          "name": "machineConfirmation",
+          "parameterTypes": []
+        },
+        {
+          "name": "operationIdentity",
+          "parameterTypes": []
+        },
+        {
+          "name": "outcomeCode",
+          "parameterTypes": []
+        },
+        {
+          "name": "outcomeStatus",
+          "parameterTypes": []
+        },
+        {
+          "name": "providerMajorVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "references",
+          "parameterTypes": []
+        },
+        {
+          "name": "userConfirmed",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.command.CommandReconciliationReceipt",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "outputDigest",
+          "parameterTypes": []
+        },
+        {
+          "name": "reference",
+          "parameterTypes": []
+        },
+        {
+          "name": "settledAtEpochMs",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.config.pipeline.PipelineJson$ConnectorProviderIdMixin",
+      "allDeclaredFields": true
+    },
+    {
       "type": "org.pipelineframework.config.pipeline.PipelineJson$EmptyPlacementFilter",
       "methods": [
         {
@@ -979,6 +1282,322 @@
         {
           "name": "deployment",
           "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.CommandMachineConfirmation",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.connector.CommandRecoveryBinding",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "org.pipelineframework.connector.ConnectorOperationIdentity",
+            "int",
+            "org.pipelineframework.connector.ConnectorBindingName",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "org.pipelineframework.connector.ConnectorConfigurationSnapshot",
+            "org.pipelineframework.connector.CommandRecoveryTarget"
+          ]
+        },
+        {
+          "name": "attemptId",
+          "parameterTypes": []
+        },
+        {
+          "name": "binding",
+          "parameterTypes": []
+        },
+        {
+          "name": "commandId",
+          "parameterTypes": []
+        },
+        {
+          "name": "contractVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "executionId",
+          "parameterTypes": []
+        },
+        {
+          "name": "inputDigest",
+          "parameterTypes": []
+        },
+        {
+          "name": "inputType",
+          "parameterTypes": []
+        },
+        {
+          "name": "occurrenceId",
+          "parameterTypes": []
+        },
+        {
+          "name": "operationConfiguration",
+          "parameterTypes": []
+        },
+        {
+          "name": "operationIdentity",
+          "parameterTypes": []
+        },
+        {
+          "name": "outputType",
+          "parameterTypes": []
+        },
+        {
+          "name": "pipelineId",
+          "parameterTypes": []
+        },
+        {
+          "name": "providerMajorVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "releaseVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "stepId",
+          "parameterTypes": []
+        },
+        {
+          "name": "target",
+          "parameterTypes": []
+        },
+        {
+          "name": "tenantId",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.CommandRecoveryTarget",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "org.pipelineframework.connector.ConnectorConfigurationSnapshot"
+          ]
+        },
+        {
+          "name": "configuration",
+          "parameterTypes": []
+        },
+        {
+          "name": "identity",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.CommandReference",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "org.pipelineframework.connector.CommandReferencePurpose"
+          ]
+        },
+        {
+          "name": "kind",
+          "parameterTypes": []
+        },
+        {
+          "name": "purpose",
+          "parameterTypes": []
+        },
+        {
+          "name": "value",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.CommandReferencePurpose",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.connector.ConnectionRef",
+      "allDeclaredFields": true
+    },
+    {
+      "type": "org.pipelineframework.connector.ConnectorBindingName",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "value",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.ConnectorConfigurationSnapshot",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "int",
+            "java.lang.String",
+            "java.util.List"
+          ]
+        },
+        {
+          "name": "connectionReferences",
+          "parameterTypes": []
+        },
+        {
+          "name": "digest",
+          "parameterTypes": []
+        },
+        {
+          "name": "schemaId",
+          "parameterTypes": []
+        },
+        {
+          "name": "schemaVersion",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.ConnectorOperationIdentity",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.pipelineframework.connector.ConnectorProviderId",
+            "java.lang.String",
+            "org.pipelineframework.connector.ConnectorOperationKind",
+            "int"
+          ]
+        },
+        {
+          "name": "kind",
+          "parameterTypes": []
+        },
+        {
+          "name": "majorVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "operationId",
+          "parameterTypes": []
+        },
+        {
+          "name": "providerId",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.ConnectorOperationKind",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "value",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.ConnectorProviderId",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "value",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.http.HttpOperationConfiguration",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.http.HttpProviderConfiguration",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.pipelineframework.connector.ConnectionRef",
+            "java.util.Optional",
+            "java.util.Optional",
+            "java.util.Optional"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.polyglot.PolyglotConnectorProvider$OperationConfig",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.polyglot.PolyglotConnectorProvider$PolyglotConnectorConfig",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.Integer"
+          ]
         }
       ]
     },
