@@ -446,11 +446,28 @@ class PolyglotCliEndToEndTest {
 
     private static void requireNodeWithTypeStripping() {
         boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"));
+        Path probeDir = null;
+        Process proc = null;
         try {
-            Process p = new ProcessBuilder("node", "-v").redirectErrorStream(true).start();
-            String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            boolean ok = p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0 && supportsTypeStripping(output);
-            String message = "Node.js >= 22.6 is required to run TypeScript host end-to-end tests (found: " + output + ")";
+            probeDir = Files.createTempDirectory("tpf-node-probe");
+            Path probeScript = probeDir.resolve("probe.ts");
+            Path probeOut = probeDir.resolve("probe.out");
+            Files.writeString(probeScript, "const value: number = 42; console.log(value);\n");
+            proc = new ProcessBuilder("node", probeScript.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(probeOut.toFile())
+                .start();
+            boolean finished = proc.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                proc.destroyForcibly();
+                proc.waitFor(2, TimeUnit.SECONDS);
+            }
+            String output = Files.exists(probeOut)
+                ? Files.readString(probeOut, StandardCharsets.UTF_8).trim()
+                : "";
+            boolean ok = finished && proc.exitValue() == 0 && "42".equals(output);
+            String message = "Node.js with default TypeScript type stripping (>= 22.18 / 23.6+) is required to run "
+                + "TypeScript host end-to-end tests (finished=" + finished + ", output=" + output + ")";
             if (isCi) {
                 assertTrue(ok, message);
             } else {
@@ -460,27 +477,28 @@ class PolyglotCliEndToEndTest {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            String message = "Node.js >= 22.6 is required on PATH to run TypeScript host end-to-end tests: " + e.getMessage();
+            String message = "Node.js with default TypeScript type stripping is required on PATH to run "
+                + "TypeScript host end-to-end tests: " + e.getMessage();
             if (isCi) {
                 fail(message);
             } else {
                 Assumptions.assumeTrue(false, message);
             }
-        }
-    }
-
-    private static boolean supportsTypeStripping(String versionOutput) {
-        String normalized = versionOutput.startsWith("v") ? versionOutput.substring(1) : versionOutput;
-        String[] parts = normalized.split("\\.");
-        if (parts.length < 2) {
-            return false;
-        }
-        try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = Integer.parseInt(parts[1]);
-            return major > 22 || (major == 22 && minor >= 6);
-        } catch (NumberFormatException e) {
-            return false;
+        } finally {
+            if (proc != null && proc.isAlive()) {
+                proc.destroyForcibly();
+            }
+            if (probeDir != null) {
+                try (var stream = Files.walk(probeDir)) {
+                    stream.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (IOException ignored) {
+                        }
+                    });
+                } catch (IOException ignored) {
+                }
+            }
         }
     }
 

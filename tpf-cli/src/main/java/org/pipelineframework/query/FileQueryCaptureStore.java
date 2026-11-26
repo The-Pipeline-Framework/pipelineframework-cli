@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BooleanSupplier;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,8 +31,13 @@ public final class FileQueryCaptureStore implements QueryCaptureStore {
     private final Map<String, QueryCaptureRecord> records = new LinkedHashMap<>();
 
     public FileQueryCaptureStore(Path dataDir) {
+        this(dataDir, () -> true);
+    }
+
+    public FileQueryCaptureStore(Path dataDir, BooleanSupplier isOpen) {
         this.file = new LocalFileDevStores.AtomicJsonFile(
-            Objects.requireNonNull(dataDir, "dataDir must not be null").resolve("query-captures.json"));
+            Objects.requireNonNull(dataDir, "dataDir must not be null").resolve("query-captures.json"),
+            isOpen);
         load();
     }
 

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,8 +34,13 @@ public final class FileCommandEffectStore implements CommandEffectStore {
     private final Map<String, PersistedEntry> entries = new LinkedHashMap<>();
 
     public FileCommandEffectStore(Path dataDir) {
+        this(dataDir, () -> true);
+    }
+
+    public FileCommandEffectStore(Path dataDir, BooleanSupplier isOpen) {
         this.file = new LocalFileDevStores.AtomicJsonFile(
-            Objects.requireNonNull(dataDir, "dataDir must not be null").resolve("command-effects.json"));
+            Objects.requireNonNull(dataDir, "dataDir must not be null").resolve("command-effects.json"),
+            isOpen);
         this.codec = new CommandEffectRecordCodec(JSON, FileCommandEffectStore.class.getClassLoader());
         load();
     }

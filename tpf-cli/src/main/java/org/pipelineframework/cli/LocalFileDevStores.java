@@ -20,6 +20,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -75,9 +78,12 @@ public final class LocalFileDevStores implements AutoCloseable {
     private static final ObjectMapper JSON = PipelineJson.mapper().copy()
         .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
         .enable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN);
+    private static final Set<Path> ACTIVE_LOCKED_DIRS = ConcurrentHashMap.newKeySet();
 
+    private final Path lockedDir;
     private final FileChannel lockChannel;
     private final FileLock directoryLock;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public final FileExecutionStateStore executionStore;
     public final FileAwaitUnitStore unitStore;
@@ -90,57 +96,84 @@ public final class LocalFileDevStores implements AutoCloseable {
         Objects.requireNonNull(dataDir, "dataDir must not be null");
         Objects.requireNonNull(payloadCodec, "payloadCodec must not be null");
         Path normalized = dataDir.toAbsolutePath().normalize();
+        Path realDir;
         try {
             Files.createDirectories(normalized);
-            Path lockFile = normalized.resolve(".dev-store.lock");
-            FileChannel ch = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            FileLock acquired;
-            try {
-                acquired = ch.tryLock();
-            } catch (OverlappingFileLockException e) {
-                ch.close();
-                throw new IllegalStateException(
-                    "Another tpf dev instance is already using data directory: " + normalized, e);
-            }
-            if (acquired == null) {
-                ch.close();
-                throw new IllegalStateException(
-                    "Another tpf dev instance is already using data directory: " + normalized);
-            }
-            this.lockChannel = ch;
-            this.directoryLock = acquired;
+            realDir = normalized.toRealPath();
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed locking local dev data directory " + normalized, e);
+            throw new UncheckedIOException("Failed creating local dev data directory " + normalized, e);
         }
+        if (!ACTIVE_LOCKED_DIRS.add(realDir)) {
+            throw new IllegalStateException(
+                "Another tpf dev instance is already using data directory: " + realDir);
+        }
+        FileChannel ch = null;
+        FileLock acquired = null;
+        try {
+            Path lockFile = realDir.resolve(".dev-store.lock");
+            ch = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            acquired = ch.tryLock();
+            if (acquired == null) {
+                throw new IllegalStateException(
+                    "Another tpf dev instance is already using data directory: " + realDir);
+            }
+        } catch (OverlappingFileLockException e) {
+            closeQuietly(ch);
+            ACTIVE_LOCKED_DIRS.remove(realDir);
+            throw new IllegalStateException(
+                "Another tpf dev instance is already using data directory: " + realDir, e);
+        } catch (IOException e) {
+            closeQuietly(ch);
+            ACTIVE_LOCKED_DIRS.remove(realDir);
+            throw new UncheckedIOException("Failed locking local dev data directory " + realDir, e);
+        } catch (RuntimeException | Error e) {
+            closeQuietly(ch);
+            ACTIVE_LOCKED_DIRS.remove(realDir);
+            throw e;
+        }
+        this.lockedDir = realDir;
+        this.lockChannel = ch;
+        this.directoryLock = acquired;
+        BooleanSupplier isOpen = () -> !closed.get();
         try {
             this.executionStore = new FileExecutionStateStore(
-                new AtomicJsonFile(normalized.resolve("executions.json")), payloadCodec);
+                new AtomicJsonFile(realDir.resolve("executions.json"), isOpen), payloadCodec);
             this.unitStore = new FileAwaitUnitStore(
-                new AtomicJsonFile(normalized.resolve("await-units.json")));
+                new AtomicJsonFile(realDir.resolve("await-units.json"), isOpen));
             this.interactionStore = new FileAwaitInteractionStore(
-                new AtomicJsonFile(normalized.resolve("await-interactions.json")), payloadCodec);
+                new AtomicJsonFile(realDir.resolve("await-interactions.json"), isOpen), payloadCodec);
             this.dispatchIntentStore = new FileForeignDispatchIntentStore(
-                new AtomicJsonFile(normalized.resolve("dispatch-intents.json")));
-            this.commandEffectStore = new FileCommandEffectStore(normalized);
-            this.queryCaptureStore = new FileQueryCaptureStore(normalized);
+                new AtomicJsonFile(realDir.resolve("dispatch-intents.json"), isOpen));
+            this.commandEffectStore = new FileCommandEffectStore(realDir, isOpen);
+            this.queryCaptureStore = new FileQueryCaptureStore(realDir, isOpen);
         } catch (RuntimeException | Error e) {
             close();
             throw e;
         }
     }
 
+    private static void closeQuietly(FileChannel ch) {
+        if (ch != null) {
+            try {
+                ch.close();
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
     @Override
     public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         try {
             if (directoryLock.isValid()) {
                 directoryLock.release();
             }
         } catch (IOException ignored) {
         } finally {
-            try {
-                lockChannel.close();
-            } catch (IOException ignored) {
-            }
+            closeQuietly(lockChannel);
+            ACTIVE_LOCKED_DIRS.remove(lockedDir);
         }
     }
 
@@ -181,9 +214,15 @@ public final class LocalFileDevStores implements AutoCloseable {
 
     public static final class AtomicJsonFile {
         private final Path target;
+        private final BooleanSupplier isOpen;
 
         public AtomicJsonFile(Path target) {
+            this(target, () -> true);
+        }
+
+        public AtomicJsonFile(Path target, BooleanSupplier isOpen) {
             this.target = Objects.requireNonNull(target, "target must not be null");
+            this.isOpen = Objects.requireNonNull(isOpen, "isOpen must not be null");
         }
 
         public Optional<JsonNode> readIfPresent() {
@@ -202,6 +241,9 @@ public final class LocalFileDevStores implements AutoCloseable {
         }
 
         public void writeAtomically(Object value) {
+            if (!isOpen.getAsBoolean()) {
+                throw new IllegalStateException("Local dev store is closed; refusing write to " + target);
+            }
             Path tmp = null;
             try {
                 Path parent = target.toAbsolutePath().getParent();

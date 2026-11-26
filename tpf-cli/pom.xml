@@ -20,7 +20,7 @@
     <dependency>
       <groupId>org.pipelineframework</groupId>
       <artifactId>http-connector</artifactId>
-      <version>${tpf.runtime.version}</version>
+      <version>${tpf.connectors.version}</version>
       <exclusions>
         <exclusion>
           <groupId>org.jboss.slf4j</groupId>

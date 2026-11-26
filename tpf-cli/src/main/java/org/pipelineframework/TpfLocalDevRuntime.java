@@ -369,6 +369,17 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
             executionService.releaseIdentityResolver = identityResolver;
             localControlPlane.pipelineExecutionService = executionService;
             executionService.runStartupHealthChecks();
+
+            // Run an initial recovery sweep and schedule periodic sweeps so persisted WAIT_RETRY
+            // records, expired leases, and retries whose timer fires slightly early always advance.
+            retryScheduler.scheduleWithFixedDelay(() -> {
+                if (!closed.get()) {
+                    try {
+                        sweepAndDrain(System.currentTimeMillis());
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            }, 0L, 250L, TimeUnit.MILLISECONDS);
         } catch (IOException | RuntimeException | Error e) {
             close();
             throw e;
@@ -382,10 +393,17 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
         }
         HttpServer server = this.httpServer;
         if (server != null) {
-            server.stop(0);
+            server.stop(1);
             this.httpServer = null;
         }
         retryScheduler.shutdownNow();
+        for (ExecutorService exec : managedExecutors) {
+            exec.shutdown();
+        }
+        awaitExecutorTermination(retryScheduler);
+        for (ExecutorService exec : managedExecutors) {
+            awaitExecutorTermination(exec);
+        }
         if (bindingRegistry != null && bindingRegistry.isPresent()
             && connectorRuntimeContext != null && connectorRuntimeContext.isPresent()) {
             try {
@@ -394,10 +412,21 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
             } catch (Exception ignored) {
             }
         }
-        for (ExecutorService exec : managedExecutors) {
-            exec.shutdownNow();
+        synchronized (queueLock) {
+            stores.close();
         }
-        stores.close();
+    }
+
+    private static void awaitExecutorTermination(ExecutorService exec) {
+        try {
+            if (!exec.awaitTermination(5, TimeUnit.SECONDS)) {
+                exec.shutdownNow();
+                exec.awaitTermination(2, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException e) {
+            exec.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private ConnectorSupportHolder buildConnectorSupport(
@@ -465,7 +494,16 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
             .build();
         Map<String, HttpBindingSpec> httpByConnection = new LinkedHashMap<>();
         for (HttpBindingSpec spec : httpBindings.values()) {
-            httpByConnection.put(spec.connectionRef(), spec);
+            HttpBindingSpec existing = httpByConnection.putIfAbsent(spec.connectionRef(), spec);
+            if (existing != null
+                && (!existing.baseUri().equals(spec.baseUri())
+                    || !existing.authScheme().equals(spec.authScheme())
+                    || !existing.bearerToken().equals(spec.bearerToken()))) {
+                throw new IllegalArgumentException(
+                    "Conflicting http.client configuration for connection '" + spec.connectionRef()
+                        + "' across bindings '" + existing.bindingName().value()
+                        + "' and '" + spec.bindingName().value() + "'");
+            }
         }
 
         ConnectionResolver resolver = new ConnectionResolver() {
