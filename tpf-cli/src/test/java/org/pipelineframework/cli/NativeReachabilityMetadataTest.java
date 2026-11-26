@@ -50,6 +50,20 @@ class NativeReachabilityMetadataTest {
                 && method.path("parameterTypes").isArray() && method.path("parameterTypes").isEmpty()));
     }
 
+    @Test
+    void registersPolyglotGenerateAndDevSubcommandsAndCanonicalPayloadClosure() throws Exception {
+        var metadata = metadata();
+        for (String type : List.of(
+            "org.pipelineframework.cli.GenerateCommand",
+            "org.pipelineframework.cli.DevCommand",
+            "org.pipelineframework.orchestrator.TypedDurablePayload",
+            "org.pipelineframework.orchestrator.SerializedTransitionPayload",
+            "org.pipelineframework.orchestrator.ExecutionInputSnapshot"
+        )) {
+            assertNotNull(registration(metadata, type));
+        }
+    }
+
     private static JsonNode metadata() throws Exception {
         String resource = "META-INF/native-image/org.pipelineframework/tpf-cli/reachability-metadata.json";
         try (var input = NativeReachabilityMetadataTest.class.getClassLoader().getResourceAsStream(resource)) {

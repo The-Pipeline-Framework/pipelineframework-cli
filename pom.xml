@@ -44,6 +44,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
         <tpf.runtime.version>26.11.3-SNAPSHOT</tpf.runtime.version>
+        <tpf.compiler.version>26.11.3-SNAPSHOT</tpf.compiler.version>
+        <tpf.connectors.version>26.11.3-SNAPSHOT</tpf.connectors.version>
         <jackson.version>2.22.2</jackson.version>
         <picocli.version>4.7.7</picocli.version>
         <junit.version>5.13.4</junit.version>

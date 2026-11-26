@@ -5,6 +5,29 @@
   <name>tpf-cli</name>
   <dependencies>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-release-producer</artifactId><version>${tpf.runtime.version}</version></dependency>
+    <dependency><groupId>org.pipelineframework</groupId><artifactId>pipelineframework-compiler</artifactId><version>${tpf.compiler.version}</version></dependency>
+    <dependency>
+      <groupId>org.pipelineframework</groupId>
+      <artifactId>pipelineframework</artifactId>
+      <version>${tpf.runtime.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.jboss.slf4j</groupId>
+          <artifactId>slf4j-jboss-logmanager</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.pipelineframework</groupId>
+      <artifactId>http-connector</artifactId>
+      <version>${tpf.connectors.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.jboss.slf4j</groupId>
+          <artifactId>slf4j-jboss-logmanager</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
     <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-nop</artifactId><version>1.7.36</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-core</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>org.pipelineframework</groupId><artifactId>tpf-deployment-target-local</artifactId><version>${project.version}</version></dependency>
@@ -21,7 +44,11 @@
       <configuration>
         <mainClass>org.pipelineframework.cli.TpfCli</mainClass><imageName>tpf</imageName><fallback>false</fallback>
         <metadataRepository><enabled>true</enabled></metadataRepository>
-        <buildArgs><buildArg>--no-fallback</buildArg><buildArg>--enable-url-protocols=http,https</buildArg></buildArgs>
+        <buildArgs>
+          <buildArg>--no-fallback</buildArg>
+          <buildArg>--enable-url-protocols=http,https</buildArg>
+          <buildArg>--initialize-at-build-time=io.smallrye.common,org.jboss.logmanager,org.jboss.logging,org.slf4j,io.quarkus.bootstrap.logging,io.quarkus.vertx.mdc</buildArg>
+        </buildArgs>
       </configuration>
     </plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>3.6.1</version><executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>

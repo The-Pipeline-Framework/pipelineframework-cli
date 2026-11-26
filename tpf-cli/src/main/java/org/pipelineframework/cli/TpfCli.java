@@ -10,8 +10,14 @@ import picocli.CommandLine.IVersionProvider;
     name = "tpf",
     mixinStandardHelpOptions = true,
     versionProvider = TpfCli.ManifestVersionProvider.class,
-    description = "Verify and deploy immutable TPF Releases.",
-    subcommands = {ReleaseCommand.class, DeployCommand.class, AuthCommand.class})
+    description = "Generate, run locally, verify, and deploy TPF pipelines and Releases.",
+    subcommands = {
+        ReleaseCommand.class,
+        DeployCommand.class,
+        AuthCommand.class,
+        GenerateCommand.class,
+        DevCommand.class
+    })
 public final class TpfCli implements Runnable {
     public static final class ManifestVersionProvider implements IVersionProvider {
         @Override
@@ -37,6 +43,7 @@ public final class TpfCli implements Runnable {
     }
 
     public static void main(String[] args) {
+        io.quarkus.runtime.ssl.SslContextConfiguration.setSslNativeEnabled(true);
         int exitCode = new CommandLine(new TpfCli()).execute(args);
         System.exit(exitCode);
     }
