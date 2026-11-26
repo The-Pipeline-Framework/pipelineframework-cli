@@ -49,7 +49,8 @@ final class CliSupport {
 
     static int failure(Throwable failure, PrintWriter error) {
         Throwable cause = root(failure);
-        error.println("tpf: " + cause.getMessage());
+        String message = cause.getMessage();
+        error.println("tpf: " + (message != null && !message.isBlank() ? message : cause.getClass().getName()));
         if (cause instanceof ReleaseVerificationException release) {
             return release.category() == ReleaseVerificationException.Category.RESOLUTION
                 ? RESOLUTION_FAILURE : INVALID_RELEASE;
