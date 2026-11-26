@@ -232,7 +232,7 @@ public final class TpfLocalDevRuntime {
                 return Uni.createFrom().voidItem();
             }
             @Override public Uni<Void> enqueueDelayed(ExecutionWorkItem item, Duration delay) {
-                workQueue.add(item);
+                // Delayed retries stay in ExecutionStateStore (WAIT_RETRY) until sweepOnce dispatches them when due.
                 return Uni.createFrom().voidItem();
             }
             @Override public String providerName() { return "local-dev-queue"; }

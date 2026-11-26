@@ -26,7 +26,7 @@
         <buildArgs>
           <buildArg>--no-fallback</buildArg>
           <buildArg>--enable-url-protocols=http,https</buildArg>
-          <buildArg>--initialize-at-build-time=io.smallrye.common,org.jboss.logmanager,org.jboss.logging,org.slf4j,io.quarkus.bootstrap.logging</buildArg>
+          <buildArg>--initialize-at-build-time=io.smallrye.common,org.jboss.logmanager,org.jboss.logging,org.slf4j,io.quarkus.bootstrap.logging,io.quarkus.vertx.mdc</buildArg>
         </buildArgs>
       </configuration>
     </plugin>

@@ -260,6 +260,7 @@ class PolyglotCliEndToEndTest {
                 {"tenantId":"t1","executionKey":"exec-retry-1","payload":{"orderSeq":20,"amount":2.50,"mode":"TRANSIENT_ONCE"}}""");
             assertEquals("WAIT_RETRY", retryRun.path("status").asText(), retryRun.toString());
             String retryExecId = retryRun.path("executionId").asText();
+            Thread.sleep(25);
             postJson(client, devUri2.resolve("/sweep"),
                 "{\"nowEpochMs\":" + (System.currentTimeMillis() + 60_000L) + "}");
             JsonNode afterSweep = getJson(client, devUri2.resolve("/runs/t1/" + retryExecId));
