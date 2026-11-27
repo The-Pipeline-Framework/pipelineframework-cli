@@ -93,12 +93,21 @@ steps:
 
 PYTHON_HOST_SOURCE = """import os
 import signal
+import socketserver
 import sys
 import threading
 import time
 
 sys.path.insert(0, os.environ["TPF_GEN_PARENT"])
 from sigkill_proof import host, types as t
+
+# Avoid macOS CI runner reverse-DNS stalls in http.server.HTTPServer.server_bind (socket.getfqdn).
+def _fast_server_bind(self):
+    socketserver.TCPServer.server_bind(self)
+    self.server_name, self.server_port = self.server_address[:2]
+
+
+host.ThreadingHTTPServer.server_bind = _fast_server_bind
 
 lock = threading.Lock()
 transient_seen = set()
@@ -302,8 +311,9 @@ def main():
         host_env = dict(os.environ)
         host_env["TPF_GEN_PARENT"] = str(root)
         host_env["TPF_DEV_SECRET"] = SHARED_SECRET
+        host_env["PYTHONUNBUFFERED"] = "1"
         host_proc = subprocess.Popen(
-            [sys.executable, str(host_script)],
+            [sys.executable, "-u", str(host_script)],
             env=host_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -312,7 +322,7 @@ def main():
         )
         dev_procs: list[subprocess.Popen] = []
         try:
-            host_url = wait_for_ready_line(host_proc, "READY ", timeout_s=15.0)
+            host_url = wait_for_ready_line(host_proc, "READY ", timeout_s=45.0)
 
             # 3. Proof A: WAITING_EXTERNAL Await boundary survives SIGKILL
             dev1, url1, pid1 = start_tpf_dev(args, home, yaml_path, host_url, data_dir)
