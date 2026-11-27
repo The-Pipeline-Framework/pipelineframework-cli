@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -51,6 +53,11 @@ public final class CloudArtifactUploader {
                 throw new IllegalArgumentException("Artifact file must be non-empty");
             }
         }
+
+        String sha256Base64() {
+            byte[] raw = HexFormat.of().parseHex(artifactDigest.substring("sha256:".length()));
+            return Base64.getEncoder().encodeToString(raw);
+        }
     }
 
     public record UploadResult(
@@ -73,6 +80,8 @@ public final class CloudArtifactUploader {
             artifactDigest = artifactDigest == null ? "" : artifactDigest;
         }
     }
+
+    private record StagedArtifact(Path snapshotFile, FileDigest digest) {}
 
     public CloudArtifactUploader(CloudTargetConfiguration configuration, CredentialResolver credentials) {
         this(configuration, credentials, HttpClient.newHttpClient());
@@ -103,12 +112,7 @@ public final class CloudArtifactUploader {
         if (!Files.isRegularFile(normalized)) {
             throw new IllegalArgumentException("Artifact file does not exist: " + file);
         }
-        MessageDigest sha256;
-        try {
-            sha256 = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 digest algorithm is unavailable", e);
-        }
+        MessageDigest sha256 = sha256Digest();
         long bytesRead = 0L;
         byte[] buffer = new byte[STREAM_BUFFER_SIZE];
         try (InputStream input = Files.newInputStream(normalized)) {
@@ -132,13 +136,58 @@ public final class CloudArtifactUploader {
     public UploadResult upload(String artifactId, Path file) throws DeploymentException, IOException {
         String safeArtifactId = validateArtifactId(artifactId);
         Path normalizedFile = Objects.requireNonNull(file, "file").toAbsolutePath().normalize();
-        FileDigest fileDigest = digestFile(normalizedFile);
-        return uploadWithDigest(safeArtifactId, normalizedFile, fileDigest, false);
+        // Stage an immutable temporary snapshot while hashing so TOCTOU file replacement cannot alter uploaded bytes.
+        StagedArtifact staged = stageArtifact(normalizedFile);
+        try {
+            return uploadWithDigest(safeArtifactId, staged.snapshotFile(), staged.digest(), false);
+        } finally {
+            Files.deleteIfExists(staged.snapshotFile());
+        }
+    }
+
+    private static StagedArtifact stageArtifact(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("Artifact file does not exist: " + file);
+        }
+        Path snapshot = Files.createTempFile("tpf-artifact-", ".upload");
+        boolean keepSnapshot = false;
+        try {
+            MessageDigest sha256 = sha256Digest();
+            long bytesRead = 0L;
+            byte[] buffer = new byte[STREAM_BUFFER_SIZE];
+            try (InputStream input = Files.newInputStream(file);
+                 OutputStream output = Files.newOutputStream(snapshot)) {
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    sha256.update(buffer, 0, read);
+                    output.write(buffer, 0, read);
+                    bytesRead += read;
+                }
+            }
+            if (bytesRead < 1L) {
+                throw new IllegalArgumentException("Artifact file is empty: " + file);
+            }
+            String digest = "sha256:" + HexFormat.of().formatHex(sha256.digest());
+            keepSnapshot = true;
+            return new StagedArtifact(snapshot, new FileDigest(digest, bytesRead));
+        } finally {
+            if (!keepSnapshot) {
+                Files.deleteIfExists(snapshot);
+            }
+        }
+    }
+
+    private static MessageDigest sha256Digest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest algorithm is unavailable", e);
+        }
     }
 
     private UploadResult uploadWithDigest(
         String artifactId,
-        Path file,
+        Path snapshotFile,
         FileDigest fileDigest,
         boolean retriedAfterPreconditionFailed
     ) throws DeploymentException {
@@ -178,11 +227,12 @@ public final class CloudArtifactUploader {
         }
         URI uploadUri = parseUploadUri(CloudTarget.requiredText(presignBody, "uploadUrl"));
         Map<String, String> headers = parseUploadHeaders(presignBody.get("headers"));
+        verifyPresignedChecksumHeader(headers, fileDigest);
 
-        HttpResponse<byte[]> putResponse = executePresignedPut(uploadUri, headers, file);
+        HttpResponse<byte[]> putResponse = executePresignedPut(uploadUri, headers, snapshotFile);
         if (putResponse.statusCode() == 412 && !retriedAfterPreconditionFailed) {
             // If-None-Match: * raced with a concurrent upload for the exact digest; re-check presign once.
-            return uploadWithDigest(artifactId, file, fileDigest, true);
+            return uploadWithDigest(artifactId, snapshotFile, fileDigest, true);
         }
         if (putResponse.statusCode() < 200 || putResponse.statusCode() >= 300) {
             throw new DeploymentException(
@@ -202,6 +252,21 @@ public final class CloudArtifactUploader {
             uploadedVersionId,
             fileDigest.artifactDigest(),
             fileDigest.contentLength());
+    }
+
+    private static void verifyPresignedChecksumHeader(Map<String, String> headers, FileDigest fileDigest)
+        throws DeploymentException {
+        String expectedBase64 = fileDigest.sha256Base64();
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if ("x-amz-checksum-sha256".equalsIgnoreCase(entry.getKey())) {
+                String provided = entry.getValue() == null ? "" : entry.getValue().trim();
+                if (!expectedBase64.equals(provided)) {
+                    throw new DeploymentException(
+                        DeploymentException.FailureClass.TARGET,
+                        "TPF Cloud presign response x-amz-checksum-sha256 does not match local artifact digest");
+                }
+            }
+        }
     }
 
     private JsonNode requestPresign(String artifactId, FileDigest fileDigest) throws DeploymentException {
@@ -256,12 +321,12 @@ public final class CloudArtifactUploader {
         }
     }
 
-    private HttpResponse<byte[]> executePresignedPut(URI uploadUri, Map<String, String> headers, Path file)
+    private HttpResponse<byte[]> executePresignedPut(URI uploadUri, Map<String, String> headers, Path snapshotFile)
         throws DeploymentException {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder(uploadUri)
                 .timeout(Duration.ofMinutes(5))
-                .PUT(HttpRequest.BodyPublishers.ofFile(file));
+                .PUT(HttpRequest.BodyPublishers.ofFile(snapshotFile));
             for (Map.Entry<String, String> entry : headers.entrySet()) {
                 String name = entry.getKey();
                 if (RESTRICTED_HTTP_CLIENT_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {

@@ -28,6 +28,7 @@ import org.pipelineframework.deployment.release.VerifiedRelease;
 
 final class CloudTarget implements DeploymentTarget {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Duration MAX_REQUEST_TIMEOUT = Duration.ofSeconds(60);
     static final String RELEASE_MEDIA_TYPE = "application/vnd.tpf.pipeline-release+json";
     static final String DEPLOYMENT_PATH = "/api/v1/organizations/%s/applications/%s/environments/%s/deployments";
     static final String RESUME_PATH = DEPLOYMENT_PATH + "/%s/resume";
@@ -37,7 +38,7 @@ final class CloudTarget implements DeploymentTarget {
     static final String STATUS_WAITING_FOR_ROUTING = "WAITING_FOR_ROUTING";
     static final String STATUS_PENDING_ATTACHMENT = "PENDING_ATTACHMENT";
     private static final Set<String> HOSTED_POLLING_STATUSES = Set.of(
-        STATUS_WAITING_FOR_WORKER, STATUS_WAITING_FOR_ROUTING, STATUS_PENDING_ATTACHMENT);
+        STATUS_REGISTERED, STATUS_WAITING_FOR_WORKER, STATUS_WAITING_FOR_ROUTING, STATUS_PENDING_ATTACHMENT);
     private static final Set<String> HOSTED_INITIAL_STATUSES = Set.of(
         STATUS_ACTIVATED, STATUS_WAITING_FOR_WORKER, STATUS_WAITING_FOR_ROUTING,
         STATUS_PENDING_ATTACHMENT, STATUS_REGISTERED);
@@ -47,6 +48,8 @@ final class CloudTarget implements DeploymentTarget {
         void sleep(Duration delay) throws InterruptedException;
     }
 
+    private record JsonResponse(int statusCode, JsonNode body) {}
+
     private final CloudTargetConfiguration configuration;
     private final DeploymentServices services;
     private final HttpClient httpClient;
@@ -55,6 +58,7 @@ final class CloudTarget implements DeploymentTarget {
     private String deploymentId = "";
     private String remoteStatus = "";
     private String activationId = "";
+    private boolean awaitingRegionalActivation;
 
     CloudTarget(CloudTargetConfiguration configuration, DeploymentServices services) {
         this(configuration, services, HttpClient.newHttpClient(), Clock.systemUTC(),
@@ -88,21 +92,27 @@ final class CloudTarget implements DeploymentTarget {
             CloudTargetConfiguration.encodePathSegment(configuration.application()),
             CloudTargetConfiguration.encodePathSegment(configuration.environment()));
         HttpRequest request = HttpRequest.newBuilder(configuration.endpointUri(path))
-            .timeout(Duration.ofSeconds(60))
+            .timeout(MAX_REQUEST_TIMEOUT)
             .header("Authorization", "Bearer " + bearer.token())
             .header("Content-Type", RELEASE_MEDIA_TYPE)
             .header("Idempotency-Key", plan.request().idempotencyKey())
             .header("X-TPF-Deployment-Mode", configuration.mode())
             .POST(HttpRequest.BodyPublishers.ofByteArray(plan.release().loaded().originalBytes()))
             .build();
-        JsonNode body = sendJsonRequest(request, "deployment registration");
+        JsonResponse response = sendJsonRequest(request, "deployment registration");
+        JsonNode body = response.body();
         String receivedDeploymentId = requiredText(body, "deploymentId");
         String status = requiredText(body, "status");
+        boolean needsRegionalPolling = false;
         if (configuration.isHosted()) {
             rejectWorkerFailureIfPresent(body, receivedDeploymentId, status);
             if (!HOSTED_INITIAL_STATUSES.contains(status)) {
                 throw new DeploymentException(
                     DeploymentException.FailureClass.TARGET, "Unexpected TPF Cloud deployment status " + status);
+            }
+            if (!STATUS_ACTIVATED.equals(status)) {
+                // Distinguish regional hosted 202 acceptance (even with REGISTERED) from legacy 201 REGISTERED.
+                needsRegionalPolling = response.statusCode() == 202 || !STATUS_REGISTERED.equals(status);
             }
         } else if (!STATUS_REGISTERED.equals(status)) {
             throw new DeploymentException(
@@ -111,12 +121,13 @@ final class CloudTarget implements DeploymentTarget {
         this.deploymentId = receivedDeploymentId;
         this.remoteStatus = status;
         this.activationId = optionalText(body, "activationId");
+        this.awaitingRegionalActivation = needsRegionalPolling;
         return new ReleaseRegistration(receivedDeploymentId, StageState.COMPLETED);
     }
 
     @Override
     public PhysicalDeployment materialize(DeploymentPlan plan, ReleaseRegistration registration) throws DeploymentException {
-        if (!configuration.isHosted() || STATUS_REGISTERED.equals(remoteStatus)) {
+        if (!configuration.isHosted() || (!awaitingRegionalActivation && STATUS_REGISTERED.equals(remoteStatus))) {
             return new PhysicalDeployment(registration.identifier(), StageState.NOT_REQUESTED);
         }
         if (STATUS_ACTIVATED.equals(remoteStatus)) {
@@ -127,14 +138,10 @@ final class CloudTarget implements DeploymentTarget {
         while (!STATUS_ACTIVATED.equals(remoteStatus)) {
             Instant now = clock.instant();
             if (!now.isBefore(deadline)) {
-                throw new DeploymentException(
-                    DeploymentException.FailureClass.TARGET,
-                    "Timed out after " + configuration.timeoutSeconds()
-                        + "s waiting for TPF Cloud hosted deployment " + deploymentId
-                        + " to reach ACTIVATED (last status: " + remoteStatus + ")");
+                throw timeoutException();
             }
-            Duration remaining = Duration.between(now, deadline);
-            Duration wait = remaining.compareTo(pollInterval) < 0 ? remaining : pollInterval;
+            Duration remainingBeforeSleep = Duration.between(now, deadline);
+            Duration wait = remainingBeforeSleep.compareTo(pollInterval) < 0 ? remainingBeforeSleep : pollInterval;
             try {
                 sleeper.sleep(wait);
             } catch (InterruptedException e) {
@@ -143,7 +150,14 @@ final class CloudTarget implements DeploymentTarget {
                     DeploymentException.FailureClass.TARGET,
                     "Cloud deployment polling interrupted for " + deploymentId, e);
             }
-            resumeDeployment();
+            Duration remainingAfterSleep = Duration.between(clock.instant(), deadline);
+            if (!remainingAfterSleep.isPositive()) {
+                throw timeoutException();
+            }
+            Duration requestTimeout = remainingAfterSleep.compareTo(MAX_REQUEST_TIMEOUT) < 0
+                ? remainingAfterSleep
+                : MAX_REQUEST_TIMEOUT;
+            resumeDeployment(requestTimeout);
         }
         return new PhysicalDeployment(registration.identifier(), StageState.COMPLETED);
     }
@@ -182,7 +196,7 @@ final class CloudTarget implements DeploymentTarget {
             "Release and customer-managed Deployment registered with TPF Cloud");
     }
 
-    private void resumeDeployment() throws DeploymentException {
+    private void resumeDeployment(Duration requestTimeout) throws DeploymentException {
         Credential.Bearer bearer = resolveBearer(services.credentials(), configuration.credential());
         String path = RESUME_PATH.formatted(
             CloudTargetConfiguration.encodePathSegment(configuration.organization()),
@@ -190,12 +204,12 @@ final class CloudTarget implements DeploymentTarget {
             CloudTargetConfiguration.encodePathSegment(configuration.environment()),
             CloudTargetConfiguration.encodePathSegment(deploymentId));
         HttpRequest request = HttpRequest.newBuilder(configuration.endpointUri(path))
-            .timeout(Duration.ofSeconds(60))
+            .timeout(requestTimeout)
             .header("Authorization", "Bearer " + bearer.token())
             .header("Accept", "application/json")
             .POST(HttpRequest.BodyPublishers.noBody())
             .build();
-        JsonNode body = sendJsonRequest(request, "deployment resume");
+        JsonNode body = sendJsonRequest(request, "deployment resume").body();
         String returnedId = optionalText(body, "deploymentId");
         if (!returnedId.isBlank() && !returnedId.equals(deploymentId)) {
             throw new DeploymentException(
@@ -209,13 +223,24 @@ final class CloudTarget implements DeploymentTarget {
                 DeploymentException.FailureClass.TARGET, "Unexpected TPF Cloud deployment status " + status);
         }
         this.remoteStatus = status;
+        if (STATUS_ACTIVATED.equals(status)) {
+            this.awaitingRegionalActivation = false;
+        }
         String returnedActivation = optionalText(body, "activationId");
         if (!returnedActivation.isBlank()) {
             this.activationId = returnedActivation;
         }
     }
 
-    private JsonNode sendJsonRequest(HttpRequest request, String operation) throws DeploymentException {
+    private DeploymentException timeoutException() {
+        return new DeploymentException(
+            DeploymentException.FailureClass.TARGET,
+            "Timed out after " + configuration.timeoutSeconds()
+                + "s waiting for TPF Cloud hosted deployment " + deploymentId
+                + " to reach ACTIVATED (last status: " + remoteStatus + ")");
+    }
+
+    private JsonResponse sendJsonRequest(HttpRequest request, String operation) throws DeploymentException {
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() == 401 || response.statusCode() == 403) {
@@ -232,7 +257,7 @@ final class CloudTarget implements DeploymentTarget {
                 throw new DeploymentException(
                     DeploymentException.FailureClass.TARGET, "TPF Cloud returned HTTP " + response.statusCode());
             }
-            return JSON.readTree(response.body());
+            return new JsonResponse(response.statusCode(), JSON.readTree(response.body()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new DeploymentException(DeploymentException.FailureClass.TARGET, "Cloud request interrupted", e);

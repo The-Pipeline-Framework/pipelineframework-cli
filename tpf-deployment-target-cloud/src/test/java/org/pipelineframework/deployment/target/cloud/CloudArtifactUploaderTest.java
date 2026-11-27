@@ -312,4 +312,95 @@ class CloudArtifactUploaderTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void stagesImmutableSnapshotToPreventToctouAndValidatesPresignedChecksumHeader() throws Exception {
+        byte[] originalBytes = "original-hashed-worker-zip-bytes".getBytes(StandardCharsets.UTF_8);
+        byte[] tamperedBytes = "tampered-after-hashing-bytes-xxx".getBytes(StandardCharsets.UTF_8);
+        Path archive = temporaryDirectory.resolve("worker.zip");
+        Files.write(archive, originalBytes);
+        byte[] sha256Bytes = MessageDigest.getInstance("SHA-256").digest(originalBytes);
+        String expectedDigest = "sha256:" + HexFormat.of().formatHex(sha256Bytes);
+        String expectedBase64 = Base64.getEncoder().encodeToString(sha256Bytes);
+        AtomicReference<byte[]> receivedPutBytes = new AtomicReference<>();
+        AtomicInteger badChecksumPutCalls = new AtomicInteger();
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        int port = server.getAddress().getPort();
+        server.createContext("/toctou/api/v1/organizations/acme/applications/orders/environments/staging/artifacts/presign", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            // Simulate concurrent modification of source file AFTER hashing/staging and BEFORE PUT!
+            Files.write(archive, tamperedBytes);
+            String body = JSON.writeValueAsString(Map.of(
+                "status", "UPLOAD_REQUIRED",
+                "uploadUrl", "http://127.0.0.1:" + port + "/s3-toctou",
+                "method", "PUT",
+                "headers", Map.of(
+                    "Content-Type", "application/zip",
+                    "x-amz-checksum-sha256", expectedBase64),
+                "expiresAt", "2026-11-27T02:00:00Z",
+                "artifactUri", "s3://tpf-bucket/key/function.zip",
+                "artifactDigest", expectedDigest,
+                "contentLength", originalBytes.length));
+            byte[] response = body.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(201, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/s3-toctou", exchange -> {
+            receivedPutBytes.set(exchange.getRequestBody().readAllBytes());
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.createContext("/bad-checksum/api/v1/organizations/acme/applications/orders/environments/staging/artifacts/presign", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            String body = JSON.writeValueAsString(Map.of(
+                "status", "UPLOAD_REQUIRED",
+                "uploadUrl", "http://127.0.0.1:" + port + "/s3-bad-checksum",
+                "method", "PUT",
+                "headers", Map.of(
+                    "Content-Type", "application/zip",
+                    "x-amz-checksum-sha256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+                "expiresAt", "2026-11-27T02:00:00Z",
+                "artifactUri", "s3://tpf-bucket/key/function.zip",
+                "artifactDigest", expectedDigest,
+                "contentLength", originalBytes.length));
+            byte[] response = body.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(201, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/s3-bad-checksum", exchange -> {
+            badChecksumPutCalls.incrementAndGet();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var resolver = (org.pipelineframework.deployment.release.CredentialResolver)
+                ref -> Optional.of(new Credential.Bearer("tpf_tok_snapshot"));
+
+            var toctouUploader = new CloudArtifactUploader(
+                new CloudTargetConfiguration(URI.create("http://127.0.0.1:" + port + "/toctou"),
+                    "acme", "orders", "staging", "TPF_HOSTED", "env:TPF_CLOUD_TOKEN"),
+                resolver);
+            var uploaded = toctouUploader.upload("work-and-recovery", archive);
+            assertEquals(expectedDigest, uploaded.artifactDigest());
+            assertArrayEquals(originalBytes, receivedPutBytes.get());
+
+            // Restore original bytes and verify mismatched x-amz-checksum-sha256 header is rejected before PUT.
+            Files.write(archive, originalBytes);
+            var badChecksumUploader = new CloudArtifactUploader(
+                new CloudTargetConfiguration(URI.create("http://127.0.0.1:" + port + "/bad-checksum"),
+                    "acme", "orders", "staging", "TPF_HOSTED", "env:TPF_CLOUD_TOKEN"),
+                resolver);
+            DeploymentException error = assertThrows(
+                DeploymentException.class, () -> badChecksumUploader.upload("work-and-recovery", archive));
+            assertEquals(DeploymentException.FailureClass.TARGET, error.failureClass());
+            assertTrue(error.getMessage().contains("x-amz-checksum-sha256"));
+            assertEquals(0, badChecksumPutCalls.get());
+        } finally {
+            server.stop(0);
+        }
+    }
 }

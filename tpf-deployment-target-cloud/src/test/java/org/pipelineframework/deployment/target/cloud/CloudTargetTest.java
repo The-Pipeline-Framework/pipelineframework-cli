@@ -330,7 +330,53 @@ class CloudTargetTest {
             assertEquals(DeploymentException.FailureClass.TARGET, error.failureClass());
             assertTrue(error.getMessage().contains("Timed out after 10s"));
             assertTrue(error.getMessage().contains("WAITING_FOR_WORKER"));
-            assertEquals(3, resumeAttempts.get()); // waits: 4s, 4s, 2s -> 10s reached
+            assertEquals(2, resumeAttempts.get()); // waits: 4s -> resume, 4s -> resume, 2s -> deadline reached (no expired resume)
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void hosted202RegisteredPollsResumeToActivatedWhile201RegisteredRemainsLegacy() throws Exception {
+        byte[] descriptorBytes = "{\"schemaVersion\":2}\n".getBytes(StandardCharsets.UTF_8);
+        AtomicInteger resumeAttempts = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/organizations/acme/applications/orders/environments/staging/deployments/dep-202-reg/resume", exchange -> {
+            int attempt = resumeAttempts.incrementAndGet();
+            int code = attempt == 1 ? 202 : 200;
+            String body = attempt == 1
+                ? "{\"deploymentId\":\"dep-202-reg\",\"status\":\"REGISTERED\"}"
+                : "{\"deploymentId\":\"dep-202-reg\",\"status\":\"ACTIVATED\",\"activationId\":\"act-202\"}";
+            byte[] response = body.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(code, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.createContext("/api/v1/organizations/acme/applications/orders/environments/staging/deployments", exchange -> {
+            byte[] response = "{\"deploymentId\":\"dep-202-reg\",\"status\":\"REGISTERED\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(202, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var clock = new MutableClock(Instant.parse("2026-11-27T00:00:00Z"));
+            CloudTarget target = new CloudTarget(
+                new CloudTargetConfiguration(
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
+                    "acme", "orders", "staging", "TPF_HOSTED", "cloud", 5, 60),
+                new DeploymentServices(ref -> Optional.of(new Credential.Bearer("secret"))),
+                HttpClient.newHttpClient(),
+                clock,
+                clock::advance);
+            var plan = target.plan(verified(descriptorBytes), new DeploymentRequest("staging", "k-202-reg"));
+            var result = target.activate(plan, target.verifyRuntime(plan, target.materialize(plan, target.register(plan))));
+            assertEquals(2, resumeAttempts.get());
+            assertEquals(DeploymentStatus.ACTIVATED, result.status());
+            assertEquals(StageState.COMPLETED, result.registration());
+            assertEquals(StageState.COMPLETED, result.physicalDeployment());
+            assertEquals(StageState.COMPLETED, result.runtimeVerification());
+            assertEquals(StageState.COMPLETED, result.activation());
         } finally {
             server.stop(0);
         }
