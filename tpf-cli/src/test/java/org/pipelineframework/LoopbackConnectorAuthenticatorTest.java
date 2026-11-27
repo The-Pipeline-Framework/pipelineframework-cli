@@ -114,7 +114,7 @@ class LoopbackConnectorAuthenticatorTest {
     }
 
     @Test
-    void rejectsSlowListenerOnTimeoutAndRejectsNonLoopbackHttp() throws Exception {
+    void rejectsSlowListenerAndStalledBodyOnTimeoutAndRejectsNonLoopbackHttp() throws Exception {
         HttpServer slow = startServer(exchange -> {
             exchange.getRequestBody().readAllBytes();
             try {
@@ -124,6 +124,18 @@ class LoopbackConnectorAuthenticatorTest {
             }
             respond(exchange, 200, "{\"status\":\"OK\"}");
         });
+        HttpServer stalledBody = startServer(exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            // Send 200 headers immediately, then withhold the promised body bytes.
+            exchange.sendResponseHeaders(200, 128);
+            try {
+                Thread.sleep(2_000);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
         try {
             URI slowUri = URI.create("http://127.0.0.1:" + slow.getAddress().getPort());
             CompletionException timeout = assertThrows(CompletionException.class, () ->
@@ -131,6 +143,13 @@ class LoopbackConnectorAuthenticatorTest {
                     .toCompletableFuture()
                     .join());
             assertTrue(timeout.getCause() instanceof ConnectionResolutionException);
+
+            URI stalledUri = URI.create("http://127.0.0.1:" + stalledBody.getAddress().getPort());
+            CompletionException bodyTimeout = assertThrows(CompletionException.class, () ->
+                LoopbackConnectorAuthenticator.authenticateAsync(CLIENT, stalledUri, SECRET, Duration.ofMillis(150))
+                    .toCompletableFuture()
+                    .join());
+            assertTrue(bodyTimeout.getCause() instanceof ConnectionResolutionException);
 
             CompletionException nonLoopback = assertThrows(CompletionException.class, () ->
                 LoopbackConnectorAuthenticator.authenticateAsync(
@@ -145,6 +164,7 @@ class LoopbackConnectorAuthenticatorTest {
                 .join());
         } finally {
             slow.stop(0);
+            stalledBody.stop(0);
         }
     }
 

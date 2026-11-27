@@ -127,21 +127,32 @@ public final class LoopbackConnectorAuthenticator {
             .build();
 
         CompletableFuture<Void> verified = new CompletableFuture<>();
-        httpClient.sendAsync(request, boundedByteArrayHandler(MAX_RESPONSE_BYTES))
-            .whenComplete((response, failure) -> {
-                if (failure != null) {
-                    verified.completeExceptionally(new ConnectionResolutionException(
-                        "Tier-2 loopback connector host failed listener authentication at " + baseUri + CHALLENGE_PATH,
-                        failure));
-                    return;
-                }
-                try {
-                    verifyChallengeResponse(baseUri, sharedSecret, challenge, response);
-                    verified.complete(null);
-                } catch (RuntimeException invalid) {
-                    verified.completeExceptionally(invalid);
-                }
-            });
+        CompletableFuture<HttpResponse<byte[]>> sendFuture = httpClient.sendAsync(
+            request, boundedByteArrayHandler(MAX_RESPONSE_BYTES));
+        long deadlineMs = Math.max(1L, timeout.toMillis());
+        CompletableFuture.delayedExecutor(deadlineMs, java.util.concurrent.TimeUnit.MILLISECONDS).execute(() -> {
+            if (!verified.isDone() && verified.completeExceptionally(new ConnectionResolutionException(
+                "Tier-2 loopback connector host timed out during listener authentication at " + baseUri + CHALLENGE_PATH))) {
+                sendFuture.cancel(true);
+            }
+        });
+        sendFuture.whenComplete((response, failure) -> {
+            if (verified.isDone()) {
+                return;
+            }
+            if (failure != null) {
+                verified.completeExceptionally(new ConnectionResolutionException(
+                    "Tier-2 loopback connector host failed listener authentication at " + baseUri + CHALLENGE_PATH,
+                    failure));
+                return;
+            }
+            try {
+                verifyChallengeResponse(baseUri, sharedSecret, challenge, response);
+                verified.complete(null);
+            } catch (RuntimeException invalid) {
+                verified.completeExceptionally(invalid);
+            }
+        });
         return verified;
     }
 
