@@ -11,7 +11,7 @@ import picocli.CommandLine;
 class TpfCliTest {
     @Test
     void helpWorksAtEveryCommandLevelWithoutInputs() {
-        for (String path : java.util.List.of("", "release", "release verify", "deploy", "auth", "auth login", "auth status", "auth logout", "generate", "dev")) {
+        for (String path : java.util.List.of("", "release", "release verify", "artifact", "artifact upload", "deploy", "auth", "auth login", "auth status", "auth logout", "generate", "dev")) {
             for (String help : java.util.List.of("--help", "-h")) {
                 var output = new StringWriter();
                 var errors = new StringWriter();
@@ -45,6 +45,10 @@ class TpfCliTest {
 
         errors.getBuffer().setLength(0);
         assertEquals(2, command.execute("deploy", "production", "--output", "xml"));
+        assertTrue(errors.toString().contains("--output must be human or json"));
+
+        errors.getBuffer().setLength(0);
+        assertEquals(2, command.execute("artifact", "upload", "production", "--file", "worker.zip", "--artifact-id", "work", "--output", "xml"));
         assertTrue(errors.toString().contains("--output must be human or json"));
     }
 }

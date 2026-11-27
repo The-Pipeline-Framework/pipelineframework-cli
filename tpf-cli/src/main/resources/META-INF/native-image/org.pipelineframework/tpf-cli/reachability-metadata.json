@@ -720,6 +720,49 @@
       "type": "org.pipelineframework.TpfLocalDevRuntime$LocalConnectorQueryStep"
     },
     {
+      "type": "org.pipelineframework.cli.ArtifactCommand",
+      "fields": [
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.cli.ArtifactUploadCommand",
+      "fields": [
+        {
+          "name": "artifactId"
+        },
+        {
+          "name": "config"
+        },
+        {
+          "name": "environment"
+        },
+        {
+          "name": "file"
+        },
+        {
+          "name": "output"
+        },
+        {
+          "name": "spec"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "org.pipelineframework.cli.AuthCommand",
       "fields": [
         {
@@ -788,6 +831,9 @@
     {
       "type": "org.pipelineframework.cli.DeployCommand",
       "fields": [
+        {
+          "name": "artifacts"
+        },
         {
           "name": "config"
         },
@@ -1616,7 +1662,9 @@
             "java.lang.String",
             "java.lang.String",
             "java.lang.String",
-            "java.lang.String"
+            "java.lang.String",
+            "java.lang.Integer",
+            "java.lang.Integer"
           ]
         }
       ]

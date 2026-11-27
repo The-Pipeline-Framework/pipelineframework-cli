@@ -3,10 +3,68 @@ info:
   title: TPF Cloud Deployment API
   version: 1.0.0
 paths:
+  /api/v1/organizations/{organization}/applications/{application}/environments/{environment}/artifacts/presign:
+    post:
+      operationId: presignArtifactUpload
+      summary: Issue a digest-and-size-bounded presigned upload URL for an immutable worker artifact
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: organization, in: path, required: true, schema: {type: string}}
+        - {name: application, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [artifactId, artifactDigest, contentLength]
+              properties:
+                artifactId: {type: string}
+                artifactDigest: {type: string}
+                contentLength: {type: integer, format: int64}
+      responses:
+        '200':
+          description: Immutable artifact already exists with matching digest and size
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, artifactUri, artifactDigest, contentLength]
+                properties:
+                  status: {type: string, const: ALREADY_UPLOADED}
+                  artifactUri: {type: string}
+                  bucket: {type: string}
+                  key: {type: string}
+                  versionId: {type: string}
+                  artifactDigest: {type: string}
+                  contentLength: {type: integer, format: int64}
+        '201':
+          description: Presigned PUT URL minted for uploading the immutable artifact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, uploadUrl, method, headers, expiresAt, artifactUri, artifactDigest, contentLength]
+                properties:
+                  status: {type: string, const: UPLOAD_REQUIRED}
+                  uploadUrl: {type: string}
+                  method: {type: string, const: PUT}
+                  headers: {type: object, additionalProperties: {type: string}}
+                  expiresAt: {type: string}
+                  artifactUri: {type: string}
+                  bucket: {type: string}
+                  key: {type: string}
+                  artifactDigest: {type: string}
+                  contentLength: {type: integer, format: int64}
+        '401': {description: Authentication failed}
+        '403': {description: Authorisation failed}
+        '409': {description: Immutable artifact conflicts with different content}
   /api/v1/organizations/{organization}/applications/{application}/environments/{environment}/deployments:
     post:
-      operationId: registerCustomerManagedDeployment
-      summary: Register an immutable TPF Release and create a customer-managed Deployment
+      operationId: registerDeployment
+      summary: Register an immutable TPF Release and create a customer-managed or TPF-hosted Deployment
       security:
         - bearerAuth: []
       parameters:
@@ -14,13 +72,18 @@ paths:
         - {name: application, in: path, required: true, schema: {type: string}}
         - {name: environment, in: path, required: true, schema: {type: string}}
         - {name: Idempotency-Key, in: header, required: true, schema: {type: string}}
-        - {name: X-TPF-Deployment-Mode, in: header, required: true, schema: {type: string, const: CUSTOMER_MANAGED}}
+        - {name: X-TPF-Deployment-Mode, in: header, required: true, schema: {type: string, enum: [CUSTOMER_MANAGED, TPF_HOSTED]}}
       requestBody:
         required: true
         content:
           application/vnd.tpf.pipeline-release+json:
             schema: {type: object}
       responses:
+        '200':
+          description: Hosted Deployment activated immediately
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RegionalDeploymentProgress'}
         '201':
           description: Release and customer-managed Deployment registered
           content:
@@ -32,10 +95,76 @@ paths:
                 properties:
                   deploymentId: {type: string}
                   status: {type: string, const: REGISTERED}
+        '202':
+          description: Regional hosted Deployment accepted and awaiting worker attachment or routing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RegionalDeploymentProgress'}
         '401': {description: Authentication failed}
         '403': {description: Authorisation failed}
         '409': {description: Immutable Release identity conflicts with different content}
+  /api/v1/organizations/{organization}/applications/{application}/environments/{environment}/deployments/{deploymentId}:
+    get:
+      operationId: getDeploymentStatus
+      summary: Inspect current status of a Deployment
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: organization, in: path, required: true, schema: {type: string}}
+        - {name: application, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: path, required: true, schema: {type: string}}
+        - {name: deploymentId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Current deployment progress
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RegionalDeploymentProgress'}
+        '401': {description: Authentication failed}
+        '403': {description: Authorisation failed}
+  /api/v1/organizations/{organization}/applications/{application}/environments/{environment}/deployments/{deploymentId}/resume:
+    post:
+      operationId: resumeHostedDeployment
+      summary: Advance a Regional Hosted Deployment through worker attachment and routing to ACTIVATED
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: organization, in: path, required: true, schema: {type: string}}
+        - {name: application, in: path, required: true, schema: {type: string}}
+        - {name: environment, in: path, required: true, schema: {type: string}}
+        - {name: deploymentId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Hosted Deployment activated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RegionalDeploymentProgress'}
+        '202':
+          description: Hosted Deployment still waiting for worker attachment or routing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RegionalDeploymentProgress'}
+        '401': {description: Authentication failed}
+        '403': {description: Authorisation failed}
+        '409': {description: Deployment progression conflict}
 components:
+  schemas:
+    WorkerFailure:
+      type: object
+      properties:
+        status: {type: string}
+        errorCode: {type: string}
+        reason: {type: string}
+        stackStatus: {type: string}
+        updatedAt: {type: string}
+    RegionalDeploymentProgress:
+      type: object
+      required: [deploymentId, status]
+      properties:
+        deploymentId: {type: string}
+        status: {type: string, enum: [REGISTERED, PENDING_ATTACHMENT, WAITING_FOR_WORKER, WAITING_FOR_ROUTING, ACTIVATED]}
+        activationId: {type: string}
+        failure: {$ref: '#/components/schemas/WorkerFailure'}
   securitySchemes:
     bearerAuth:
       type: http

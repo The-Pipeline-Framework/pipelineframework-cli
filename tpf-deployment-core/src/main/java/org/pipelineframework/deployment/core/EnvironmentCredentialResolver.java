@@ -14,12 +14,23 @@ public final class EnvironmentCredentialResolver implements CredentialResolver {
         this(System.getenv());
     }
 
-    EnvironmentCredentialResolver(Map<String, String> environment) {
+    public EnvironmentCredentialResolver(Map<String, String> environment) {
         this.environment = Map.copyOf(environment);
     }
 
     @Override
     public Optional<Credential> resolve(CredentialReference reference) {
+        if (reference.name().startsWith("env:")) {
+            String variable = reference.name().substring("env:".length());
+            if (!variable.matches("[A-Za-z_][A-Za-z0-9_]{0,127}")) {
+                throw new IllegalArgumentException("Invalid environment variable credential source");
+            }
+            String token = environment.get(variable);
+            if (token != null && !token.isBlank()) {
+                return Optional.of(new Credential.Bearer(token));
+            }
+            return Optional.empty();
+        }
         if (reference.name().startsWith("oauth-session:")) {
             return new UserCredentialDirectory(UserCredentialDirectory.configured(environment))
                     .resolve(reference.name().substring("oauth-session:".length()));

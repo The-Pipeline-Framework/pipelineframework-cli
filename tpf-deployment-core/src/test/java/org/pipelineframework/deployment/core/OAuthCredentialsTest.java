@@ -100,6 +100,17 @@ class OAuthCredentialsTest {
         assertThrows(IllegalArgumentException.class, () -> new Credential.Bearer("  "));
         assertThrows(IllegalArgumentException.class, () -> new Credential.Bearer("registry:token\r\nheader"));
     }
+    @Test void envPrefixResolvesBearerTokenWithoutLeakingSecret() {
+        String secret="tpf_tok_secret_api_token_12345";
+        var resolver=new EnvironmentCredentialResolver(Map.of("TPF_CLOUD_TOKEN",secret,"BLANK_TOKEN","   "));
+        var resolved=resolver.resolve(new CredentialReference("env:TPF_CLOUD_TOKEN")).orElseThrow();
+        assertEquals(secret,((Credential.Bearer)resolved).token());
+        assertFalse(resolved.toString().contains(secret));
+        assertTrue(resolver.resolve(new CredentialReference("env:MISSING_TOKEN")).isEmpty());
+        assertTrue(resolver.resolve(new CredentialReference("env:BLANK_TOKEN")).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(new CredentialReference("env:bad-name")));
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(new CredentialReference("env:")));
+    }
     @Test void filesystemWrappersKeepTheirMessagesAndCauses() throws Exception {
         Path blocked=temporary.resolve("blocked"); Files.createFile(blocked);
         var unavailable=assertThrows(IllegalStateException.class,
