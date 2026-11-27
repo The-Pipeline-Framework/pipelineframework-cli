@@ -255,12 +255,22 @@ def start_tpf_dev(args, home: Path, yaml_path: Path, host_url: str, data_dir: Pa
         text=True,
         encoding="utf-8",
     )
-    ready = wait_for_ready_line(proc, "READY ", timeout_s=30.0)
-    port = int(ready.split()[0])
-    status, health = http_json("GET", f"http://127.0.0.1:{port}/health")
-    if status != 200 or health.get("status") != "UP":
-        raise AssertionError(f"Unexpected /health response: {status} {health}")
-    return proc, f"http://127.0.0.1:{port}", int(health["pid"])
+    try:
+        ready = wait_for_ready_line(proc, "READY ", timeout_s=30.0)
+        port = int(ready.split()[0])
+        status, health = http_json("GET", f"http://127.0.0.1:{port}/health")
+        if status != 200 or health.get("status") != "UP":
+            raise AssertionError(f"Unexpected /health response: {status} {health}")
+        return proc, f"http://127.0.0.1:{port}", int(health["pid"])
+    except Exception:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        raise
 
 
 def sigkill_and_verify(proc: subprocess.Popen):
@@ -350,6 +360,10 @@ def main():
             _, persisted1 = http_json("GET", f"{url2}/runs/default/{exec1_id}")
             assert persisted1["status"] == "WAITING_EXTERNAL", f"Lost WAITING_EXTERNAL after SIGKILL: {persisted1}"
             assert persisted1["interactionId"] == interaction1_id, "interactionId drifted across SIGKILL"
+            req1 = persisted1.get("awaitRequestPayload") or {}
+            assert req1.get("paymentId") == "pay-await-1", f"Unexpected recovered Await payload: {req1}"
+            assert req1.get("sequenceNumber") == EXACT_INT64 + 1, f"Lost int64 precision across SIGKILL: {req1}"
+            assert req1.get("amount") == Decimal(EXACT_DECIMAL), f"Lost decimal precision across SIGKILL: {req1}"
 
             complete1_body = (
                 f'{{"tenantId":"default","interactionId":"{interaction1_id}","completionId":"comp-await-1",'
@@ -402,6 +416,10 @@ def main():
             assert recovered2 is not None and recovered2["status"] == "WAITING_EXTERNAL", (
                 f"Expected recovered WAIT_RETRY execution to reach WAITING_EXTERNAL, got {recovered2}"
             )
+            req2 = recovered2.get("awaitRequestPayload") or {}
+            assert req2.get("paymentId") == "pay-retry-1", f"Unexpected recovered retry Await payload: {req2}"
+            assert req2.get("sequenceNumber") == EXACT_INT64 + 1, f"Lost int64 precision across retry SIGKILL: {req2}"
+            assert req2.get("amount") == Decimal(EXACT_DECIMAL), f"Lost decimal precision across retry SIGKILL: {req2}"
             interaction2_id = recovered2["interactionId"]
             complete2_body = (
                 f'{{"tenantId":"default","interactionId":"{interaction2_id}","completionId":"comp-retry-1",'
