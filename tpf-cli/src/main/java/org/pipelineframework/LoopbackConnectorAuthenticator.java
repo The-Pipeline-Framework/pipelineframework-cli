@@ -141,9 +141,10 @@ public final class LoopbackConnectorAuthenticator {
                 return;
             }
             if (failure != null) {
-                verified.completeExceptionally(new ConnectionResolutionException(
-                    "Tier-2 loopback connector host failed listener authentication at " + baseUri + CHALLENGE_PATH,
-                    failure));
+                String reason = isTimeoutFailure(failure)
+                    ? "Tier-2 loopback connector host timed out during listener authentication at " + baseUri + CHALLENGE_PATH
+                    : "Tier-2 loopback connector host failed listener authentication at " + baseUri + CHALLENGE_PATH;
+                verified.completeExceptionally(new ConnectionResolutionException(reason, failure));
                 return;
             }
             try {
@@ -154,6 +155,15 @@ public final class LoopbackConnectorAuthenticator {
             }
         });
         return verified;
+    }
+
+    private static boolean isTimeoutFailure(Throwable failure) {
+        for (Throwable cur = failure; cur != null; cur = cur.getCause()) {
+            if (cur instanceof java.net.http.HttpTimeoutException || cur instanceof java.util.concurrent.TimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void verifyChallengeResponse(

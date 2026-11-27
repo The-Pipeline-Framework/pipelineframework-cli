@@ -145,11 +145,17 @@ class LoopbackConnectorAuthenticatorTest {
             assertTrue(timeout.getCause() instanceof ConnectionResolutionException);
 
             URI stalledUri = URI.create("http://127.0.0.1:" + stalledBody.getAddress().getPort());
+            long stalledStartNanos = System.nanoTime();
             CompletionException bodyTimeout = assertThrows(CompletionException.class, () ->
                 LoopbackConnectorAuthenticator.authenticateAsync(CLIENT, stalledUri, SECRET, Duration.ofMillis(150))
                     .toCompletableFuture()
                     .join());
+            long stalledElapsedMs = Duration.ofNanos(System.nanoTime() - stalledStartNanos).toMillis();
+            assertTrue(stalledElapsedMs < 1_000L,
+                "Expected body deadline to fire well before 2s fixture close, elapsed=" + stalledElapsedMs + "ms");
             assertTrue(bodyTimeout.getCause() instanceof ConnectionResolutionException);
+            assertTrue(bodyTimeout.getCause().getMessage().contains("timed out during listener authentication"),
+                "Expected timeout message, got: " + bodyTimeout.getCause().getMessage());
 
             CompletionException nonLoopback = assertThrows(CompletionException.class, () ->
                 LoopbackConnectorAuthenticator.authenticateAsync(
