@@ -54,6 +54,8 @@ class NativeReachabilityMetadataTest {
     void registersPolyglotGenerateAndDevSubcommandsAndCanonicalPayloadClosure() throws Exception {
         var metadata = metadata();
         for (String type : List.of(
+            "org.pipelineframework.cli.ArtifactCommand",
+            "org.pipelineframework.cli.ArtifactUploadCommand",
             "org.pipelineframework.cli.GenerateCommand",
             "org.pipelineframework.cli.DevCommand",
             "org.pipelineframework.orchestrator.TypedDurablePayload",
@@ -62,6 +64,19 @@ class NativeReachabilityMetadataTest {
         )) {
             assertNotNull(registration(metadata, type));
         }
+        var cloudConfig = org.pipelineframework.deployment.target.cloud.CloudTargetConfiguration.class;
+        var constructors = StreamSupport.stream(registration(metadata, cloudConfig.getName()).path("methods").spliterator(), false)
+            .filter(method -> "<init>".equals(method.path("name").asText()))
+            .map(method -> StreamSupport.stream(method.path("parameterTypes").spliterator(), false)
+                .map(JsonNode::asText).toList())
+            .toList();
+        var signature = Arrays.stream(cloudConfig.getRecordComponents())
+            .map(component -> component.getType().getName()).toList();
+        assertTrue(constructors.contains(signature),
+            () -> "Native metadata must register canonical constructor of CloudTargetConfiguration: " + signature);
+        assertTrue(StreamSupport.stream(registration(metadata, "org.pipelineframework.cli.DeployCommand").path("fields").spliterator(), false)
+            .anyMatch(field -> "artifacts".equals(field.path("name").asText())),
+            "Native metadata must register DeployCommand.artifacts");
     }
 
     private static JsonNode metadata() throws Exception {

@@ -13,6 +13,7 @@ import picocli.CommandLine.IVersionProvider;
     description = "Generate, run locally, verify, and deploy TPF pipelines and Releases.",
     subcommands = {
         ReleaseCommand.class,
+        ArtifactCommand.class,
         DeployCommand.class,
         AuthCommand.class,
         GenerateCommand.class,
