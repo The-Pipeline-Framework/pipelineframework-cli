@@ -99,6 +99,7 @@ class NativePolicyTest(unittest.TestCase):
         self.assertIn('wait-native-compatibility.py',publish)
         self.assertNotIn('TPF_CLI_PUBLISH',workflow)
         self.assertIn("startsWith(github.ref, 'refs/tags/v')",publish)
+        self.assertIn('scripts/test-polyglot-native-sigkill.py --executable tpf-cli/target/tpf',build)
 
     def test_compatibility_success_cannot_override_failed_owner_verification(self):
         gate=load('wait-native-compatibility')
