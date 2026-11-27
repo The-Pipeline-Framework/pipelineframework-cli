@@ -512,6 +512,11 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                 if (request.connectionType().equals(PolyglotConnectorConnection.class)) {
                     PolyglotConnectorConnection conn = new PolyglotConnectorConnection(
                         connectorHostUri, sharedSecret, connectorSecrets, allowLoopbackHttp);
+                    if (LoopbackConnectorAuthenticator.isPlaintextLoopbackHttp(conn.hostUri())) {
+                        return LoopbackConnectorAuthenticator.authenticateAsync(
+                                pinnedHttpClient, conn.hostUri(), sharedSecret, Duration.ofSeconds(5))
+                            .thenApply(ignored -> request.connectionType().cast(conn));
+                    }
                     return CompletableFuture.completedStage(request.connectionType().cast(conn));
                 }
                 if (request.connectionType().equals(HttpClientConnection.class)) {
