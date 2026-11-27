@@ -58,6 +58,10 @@ class NativeReachabilityMetadataTest {
             "org.pipelineframework.cli.ArtifactUploadCommand",
             "org.pipelineframework.cli.GenerateCommand",
             "org.pipelineframework.cli.DevCommand",
+            "org.pipelineframework.connector.mcp.DevMcpConnector$Config",
+            "org.pipelineframework.connector.mcp.DevMcpConnector$OperationConfig",
+            "org.pipelineframework.connector.objectingest.DevObjectIngestConnector$Config",
+            "org.pipelineframework.connector.objectingest.DevObjectIngestConnector$OperationConfig",
             "org.pipelineframework.orchestrator.TypedDurablePayload",
             "org.pipelineframework.orchestrator.SerializedTransitionPayload",
             "org.pipelineframework.orchestrator.ExecutionInputSnapshot"

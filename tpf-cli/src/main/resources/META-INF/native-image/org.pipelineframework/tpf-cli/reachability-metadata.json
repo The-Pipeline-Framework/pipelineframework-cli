@@ -1622,6 +1622,63 @@
       ]
     },
     {
+      "type": "org.pipelineframework.connector.mcp.DevMcpConnector$Config",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "org.pipelineframework.connector.ConnectionRef"
+          ]
+        },
+        {
+          "name": "connection",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.mcp.DevMcpConnector$OperationConfig",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.objectingest.DevObjectIngestConnector$Config",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "long"
+          ]
+        },
+        {
+          "name": "root",
+          "parameterTypes": []
+        },
+        {
+          "name": "maxBytes",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.pipelineframework.connector.objectingest.DevObjectIngestConnector$OperationConfig",
+      "allDeclaredFields": true,
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "org.pipelineframework.connector.polyglot.PolyglotConnectorProvider$OperationConfig",
       "allDeclaredFields": true,
       "methods": [

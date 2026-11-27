@@ -89,6 +89,9 @@ import org.pipelineframework.connector.http.HttpAuthorizationMaterial;
 import org.pipelineframework.connector.http.HttpAuthorizationProvider;
 import org.pipelineframework.connector.http.HttpClientConnection;
 import org.pipelineframework.connector.http.HttpConnector;
+import org.pipelineframework.connector.mcp.DevMcpConnector;
+import org.pipelineframework.connector.mcp.McpJsonSchema;
+import org.pipelineframework.connector.objectingest.DevObjectIngestConnector;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorConnection;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorProvider;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorSpec;
@@ -445,6 +448,12 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
         List<DevHttpConnectorFactory.OperationSpec> httpOps = new ArrayList<>();
         Map<String, HttpBindingSpec> httpBindings = new LinkedHashMap<>();
 
+        List<DevMcpConnector.OperationSpec> mcpOps = new ArrayList<>();
+        Map<String, McpBindingSpec> mcpBindings = new LinkedHashMap<>();
+
+        List<DevObjectIngestConnector.OperationSpec> objectOps = new ArrayList<>();
+        Map<String, ObjectBindingSpec> objectBindings = new LinkedHashMap<>();
+
         for (PipelineTemplateStep step : template.steps()) {
             PipelineYamlStep ys = yamlByToken.get(normalizeToken(step.name()));
             if (ys == null || ys.operationSelection().isEmpty()) {
@@ -481,10 +490,27 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                 httpOps.add(parseHttpOperationSpec(
                     sel.operation(), opKind, major, step.inputTypeName(), step.outputTypeName(),
                     cfg, httpSpec.authScheme()));
+            } else if ("mcp.client".equalsIgnoreCase(provider)) {
+                mcpBindings.computeIfAbsent(sel.using(),
+                    name -> parseMcpBindingSpec(name, cfg, connectorSecrets));
+                ConnectorOperationKind opKind = "query".equals(kind)
+                    ? ConnectorOperationKind.QUERY
+                    : ConnectorOperationKind.COMMAND;
+                mcpOps.add(parseMcpOperationSpec(
+                    sel.operation(), opKind, major, step.inputTypeName(), step.outputTypeName(), cfg));
+            } else if (isObjectIngestProvider(provider)) {
+                objectBindings.computeIfAbsent(sel.using(),
+                    name -> parseObjectBindingSpec(name, cfg));
+                ConnectorOperationKind opKind = "query".equals(kind)
+                    ? ConnectorOperationKind.QUERY
+                    : ConnectorOperationKind.COMMAND;
+                objectOps.add(new DevObjectIngestConnector.OperationSpec(
+                    sel.operation(), opKind, major, step.inputTypeName(), step.outputTypeName()));
             }
         }
 
-        if (polyglotQueries.isEmpty() && polyglotCommands.isEmpty() && httpOps.isEmpty()) {
+        if (polyglotQueries.isEmpty() && polyglotCommands.isEmpty()
+            && httpOps.isEmpty() && mcpOps.isEmpty() && objectOps.isEmpty()) {
             return new ConnectorSupportHolder(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
         }
 
@@ -501,6 +527,19 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                     || !existing.bearerToken().equals(spec.bearerToken()))) {
                 throw new IllegalArgumentException(
                     "Conflicting http.client configuration for connection '" + spec.connectionRef()
+                        + "' across bindings '" + existing.bindingName().value()
+                        + "' and '" + spec.bindingName().value() + "'");
+            }
+        }
+        Map<String, McpBindingSpec> mcpByConnection = new LinkedHashMap<>();
+        for (McpBindingSpec spec : mcpBindings.values()) {
+            McpBindingSpec existing = mcpByConnection.putIfAbsent(spec.connectionRef(), spec);
+            if (existing != null
+                && (!existing.endpointUri().equals(spec.endpointUri())
+                    || !existing.bearerToken().equals(spec.bearerToken())
+                    || existing.maxResponseBytes() != spec.maxResponseBytes())) {
+                throw new IllegalArgumentException(
+                    "Conflicting mcp.client configuration for connection '" + spec.connectionRef()
                         + "' across bindings '" + existing.bindingName().value()
                         + "' and '" + spec.bindingName().value() + "'");
             }
@@ -534,6 +573,16 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                     Set<String> schemes = spec.authScheme().map(Set::of).orElseGet(Set::of);
                     HttpClientConnection conn = new HttpClientConnection(
                         pinnedHttpClient, spec.baseUri(), schemes, authProvider);
+                    return CompletableFuture.completedStage(request.connectionType().cast(conn));
+                }
+                if (request.connectionType().equals(DevMcpConnector.Connection.class)) {
+                    McpBindingSpec spec = mcpByConnection.get(request.reference().value());
+                    if (spec == null) {
+                        return CompletableFuture.failedStage(
+                            new ConnectionResolutionException("Unknown MCP connection: " + request.reference().value()));
+                    }
+                    DevMcpConnector.Connection conn = new DevMcpConnector.Connection(
+                        pinnedHttpClient, spec.endpointUri(), spec.bearerToken(), spec.maxResponseBytes());
                     return CompletableFuture.completedStage(request.connectionType().cast(conn));
                 }
                 return CompletableFuture.failedStage(
@@ -579,10 +628,39 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
             }
         }
 
+        if (!mcpOps.isEmpty()) {
+            providers.add(new DevMcpConnector(catalogue, mcpOps));
+            for (McpBindingSpec spec : mcpBindings.values()) {
+                bindingDefs.add(new ConnectorBindingDefinition(
+                    spec.bindingName(),
+                    DevMcpConnector.PROVIDER_ID,
+                    1,
+                    new ConnectorConfigurationDocument(Map.of("connection", spec.connectionRef()))));
+            }
+        }
+
+        if (!objectOps.isEmpty()) {
+            providers.add(new DevObjectIngestConnector(catalogue, objectOps));
+            for (ObjectBindingSpec spec : objectBindings.values()) {
+                bindingDefs.add(new ConnectorBindingDefinition(
+                    spec.bindingName(),
+                    DevObjectIngestConnector.PROVIDER_ID,
+                    1,
+                    new ConnectorConfigurationDocument(Map.of(
+                        "root", spec.root(),
+                        "maxBytes", spec.maxBytes()))));
+            }
+        }
+
         ConnectorBindingRegistry registry = ConnectorBindingRegistry.fromProviders(
             bindingDefs,
             providers,
-            p -> ConnectorProviderLease.of(p, () -> { }));
+            p -> {
+                ConnectorProvider<?> leased = p instanceof DevMcpConnector mcp ? mcp.copy()
+                    : p instanceof DevObjectIngestConnector obj ? obj.copy()
+                    : p;
+                return ConnectorProviderLease.of(leased, () -> { });
+            });
         registry.start(runtimeContext).toCompletableFuture().join();
 
         CommandStepSupport commandSupport = new CommandStepSupport(
@@ -629,9 +707,13 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                 PipelineYamlConnectorBinding binding = yamlConfig.connectors().get(sel.using());
                 boolean isPolyglot = binding != null && "polyglot.connector".equalsIgnoreCase(binding.provider());
                 boolean isHttp = binding != null && "http.client".equalsIgnoreCase(binding.provider());
-                if (isPolyglot || isHttp) {
+                boolean isMcp = binding != null && "mcp.client".equalsIgnoreCase(binding.provider());
+                boolean isObjectIngest = binding != null && isObjectIngestProvider(binding.provider());
+                if (isPolyglot || isHttp || isMcp || isObjectIngest) {
                     ConnectorProviderId providerId = isHttp
                         ? HttpConnector.PROVIDER_ID
+                        : isMcp ? DevMcpConnector.PROVIDER_ID
+                        : isObjectIngest ? DevObjectIngestConnector.PROVIDER_ID
                         : PolyglotConnectorProvider.PROVIDER_ID;
                     int major = sel.operationVersion();
                     if ("query".equals(kind)) {
@@ -652,7 +734,7 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                             desc, outputType, outputFp, catalogFingerprint);
                     } else {
                         Map<String, Object> cfg = binding.config() == null ? Map.of() : binding.config();
-                        boolean reconcile = !isHttp
+                        boolean reconcile = isPolyglot
                             && Boolean.parseBoolean(String.valueOf(cfg.getOrDefault("reconciliationSupported", false)));
                         boolean hasIdempotency = !isHttp || hasHttpIdempotencyHeader(cfg, sel.operation());
                         CommandDescriptor desc = CommandDescriptor.nativeCommand(
@@ -991,6 +1073,82 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
         return false;
     }
 
+    private static boolean isObjectIngestProvider(String provider) {
+        return "object.ingest".equalsIgnoreCase(provider)
+            || "filesystem.objects".equalsIgnoreCase(provider);
+    }
+
+    private static McpBindingSpec parseMcpBindingSpec(
+        String bindingName,
+        Map<String, Object> cfg,
+        Map<String, String> connectorSecrets
+    ) {
+        String rawEndpoint = optionalString(cfg.get("endpointUri"))
+            .or(() -> optionalString(cfg.get("baseUri")))
+            .orElseThrow(() -> new IllegalArgumentException(
+                "mcp.client binding '" + bindingName + "' requires config.endpointUri"));
+        URI endpointUri = URI.create(rawEndpoint);
+        String connectionRef = optionalString(cfg.get("connection")).orElse(bindingName);
+        Optional<String> secretKey = optionalString(cfg.get("bearerTokenSecret"));
+        Optional<String> bearerToken = secretKey
+            .flatMap(k -> Optional.ofNullable(connectorSecrets.get(k)))
+            .or(() -> optionalString(cfg.get("bearerToken")));
+        int maxResponseBytes = parsePositiveInt(cfg.get("maxResponseBytes"), 1_048_576);
+        return new McpBindingSpec(
+            ConnectorBindingName.of(bindingName), connectionRef, endpointUri, bearerToken, maxResponseBytes);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DevMcpConnector.OperationSpec parseMcpOperationSpec(
+        String operationId,
+        ConnectorOperationKind kind,
+        int majorVersion,
+        String inputType,
+        String outputType,
+        Map<String, Object> bindingCfg
+    ) {
+        final Map<String, Object> opCfg = bindingCfg.get("operations") instanceof Map<?, ?> opsMap
+            && opsMap.get(operationId) instanceof Map<?, ?> found
+            ? (Map<String, Object>) found
+            : Map.of();
+        String toolName = optionalString(opCfg.get("toolName"))
+            .or(() -> optionalString(opCfg.get("tool")))
+            .orElse(operationId);
+        Optional<McpJsonSchema> inputSchema = Optional.empty();
+        Object rawSchema = opCfg.get("inputSchema");
+        if (rawSchema instanceof String schemaText && !schemaText.isBlank()) {
+            inputSchema = Optional.of(new McpJsonSchema(schemaText));
+        } else if (rawSchema instanceof Map<?, ?> schemaMap) {
+            try {
+                inputSchema = Optional.of(new McpJsonSchema(JSON.writeValueAsString(schemaMap)));
+            } catch (IOException e) {
+                throw new IllegalArgumentException("Invalid mcp.client inputSchema for operation " + operationId, e);
+            }
+        }
+        return new DevMcpConnector.OperationSpec(
+            operationId, kind, majorVersion, toolName, inputType, outputType, inputSchema);
+    }
+
+    private static ObjectBindingSpec parseObjectBindingSpec(String bindingName, Map<String, Object> cfg) {
+        String root = optionalString(cfg.get("root"))
+            .orElseThrow(() -> new IllegalArgumentException(
+                "object.ingest binding '" + bindingName + "' requires config.root"));
+        long maxBytes = parsePositiveLong(cfg.get("maxBytes"), 4L * 1024L * 1024L);
+        return new ObjectBindingSpec(ConnectorBindingName.of(bindingName), root, maxBytes);
+    }
+
+    private static long parsePositiveLong(Object raw, long defaultValue) {
+        if (raw == null) {
+            return defaultValue;
+        }
+        try {
+            long parsed = Long.parseLong(raw.toString().trim());
+            return parsed > 0 ? parsed : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
     private static Optional<String> optionalString(Object raw) {
         if (raw == null) {
             return Optional.empty();
@@ -1069,6 +1227,22 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
         Optional<String> bearerToken,
         int maxRequestBytes,
         int maxResponseBytes
+    ) {
+    }
+
+    private record McpBindingSpec(
+        ConnectorBindingName bindingName,
+        String connectionRef,
+        URI endpointUri,
+        Optional<String> bearerToken,
+        int maxResponseBytes
+    ) {
+    }
+
+    private record ObjectBindingSpec(
+        ConnectorBindingName bindingName,
+        String root,
+        long maxBytes
     ) {
     }
 
