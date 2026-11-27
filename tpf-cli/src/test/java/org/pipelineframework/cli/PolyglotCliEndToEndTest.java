@@ -444,6 +444,175 @@ class PolyglotCliEndToEndTest {
         }
     }
 
+    @Test
+    void tier2LoopbackConnectorRejectsUnauthenticatedListenerWithoutTransmittingSecrets(@TempDir Path temp) throws Exception {
+        String scopedSecret = "sk_live_top_secret_999";
+        Path yaml = temp.resolve("tier2-polyglot.yaml");
+        Files.writeString(yaml, """
+            version: 3
+            appName: Tier2AuthFlow
+            basePackage: com.example.tier2
+            transport: LOCAL
+            platform: COMPUTE
+            connectors:
+              vault-host:
+                provider: polyglot.connector
+                version: 1
+                config:
+                  connection: local-polyglot-host
+            types:
+              QuoteReq:
+                fields:
+                  - name: symbol
+                    type: string
+              QuoteResp:
+                fields:
+                  - name: symbol
+                    type: string
+                  - name: seenSecret
+                    type: string
+              OrderReceipt:
+                fields:
+                  - name: symbol
+                    type: string
+                  - name: receiptId
+                    type: string
+            steps:
+              - name: Fetch Quote
+                kind: query
+                using: vault-host
+                operation: fx.quote
+                operationVersion: 1
+                cardinality: ONE_TO_ONE
+                input: QuoteReq
+                output: QuoteResp
+              - name: Commit Trade
+                kind: command
+                using: vault-host
+                operation: trade.commit
+                operationVersion: 1
+                cardinality: ONE_TO_ONE
+                input: QuoteResp
+                output: OrderReceipt
+            """);
+
+        HttpClient client = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
+        // 1. Rogue unauthenticated listener (no challenge endpoint) AND 2. Wrong-secret listener:
+        // Neither may ever receive scoped secrets or any connector dispatch call!
+        for (String mode : List.of("missing-challenge", "wrong-secret")) {
+            AtomicInteger connectorCalls = new AtomicInteger();
+            java.util.concurrent.atomic.AtomicBoolean secretLeaked = new java.util.concurrent.atomic.AtomicBoolean(false);
+            HttpServer rogue = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            rogue.createContext("/", ex -> {
+                byte[] body = ex.getRequestBody().readAllBytes();
+                String text = new String(body, StandardCharsets.UTF_8);
+                if (text.contains(scopedSecret)) {
+                    secretLeaked.set(true);
+                }
+                String path = ex.getRequestURI().getPath();
+                if (org.pipelineframework.LoopbackConnectorAuthenticator.CHALLENGE_PATH.equals(path)) {
+                    if ("missing-challenge".equals(mode)) {
+                        byte[] resp = "{\"error\":\"not found\"}".getBytes(StandardCharsets.UTF_8);
+                        ex.sendResponseHeaders(404, resp.length);
+                        try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+                    } else {
+                        String ch = JSON.readTree(body).path("challenge").asText();
+                        String wrong = org.pipelineframework.LoopbackConnectorAuthenticator.computeExpectedProof("attacker-secret", ch);
+                        byte[] resp = ("{\"status\":\"OK\",\"challenge\":\"" + ch + "\",\"proof\":\"" + wrong + "\"}")
+                            .getBytes(StandardCharsets.UTF_8);
+                        ex.getResponseHeaders().set("Content-Type", "application/json");
+                        ex.sendResponseHeaders(200, resp.length);
+                        try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+                    }
+                    return;
+                }
+                connectorCalls.incrementAndGet();
+                byte[] resp = "{\"outcome\":\"FOUND\"}".getBytes(StandardCharsets.UTF_8);
+                ex.sendResponseHeaders(200, resp.length);
+                try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+            });
+            rogue.start();
+            try {
+                URI rogueUri = URI.create("http://127.0.0.1:" + rogue.getAddress().getPort());
+                Path stateDir = temp.resolve("state-" + mode);
+                try (TpfLocalDevRuntime dev = new TpfLocalDevRuntime(
+                    yaml, rogueUri, Optional.of(rogueUri), SHARED_SECRET, stateDir, 0,
+                    Map.of("stripe-key", scopedSecret), true)) {
+                    HttpServer server = dev.startHttp(0, System.nanoTime(), new PrintWriter(new StringWriter(), true));
+                    URI devUri = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+                    JsonNode run = postJson(client, devUri.resolve("/runs"),
+                        "{\"tenantId\":\"t1\",\"executionKey\":\"rogue-" + mode + "\",\"payload\":{\"symbol\":\"EURUSD\"}}");
+                    assertEquals("FAILED", run.path("status").asText(), "Mode " + mode + " must fail closed: " + run);
+                }
+                assertEquals(0, connectorCalls.get(),
+                    "Connector endpoints must never be called when listener auth fails (" + mode + ")");
+                assertFalse(secretLeaked.get(),
+                    "Scoped connector secrets must never be transmitted to an unauthenticated loopback listener (" + mode + ")");
+            } finally {
+                rogue.stop(0);
+            }
+        }
+
+        // 3. Legitimate loopback listener answering the mutual HMAC challenge -> succeeds & receives scoped secrets!
+        AtomicInteger challengeCalls = new AtomicInteger();
+        AtomicReference<String> commandSeenSecret = new AtomicReference<>("");
+        HttpServer legitimate = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        legitimate.createContext(org.pipelineframework.LoopbackConnectorAuthenticator.CHALLENGE_PATH, ex -> {
+            challengeCalls.incrementAndGet();
+            byte[] body = ex.getRequestBody().readAllBytes();
+            String ch = JSON.readTree(body).path("challenge").asText();
+            String proof = org.pipelineframework.LoopbackConnectorAuthenticator.computeExpectedProof(SHARED_SECRET, ch);
+            byte[] resp = ("{\"status\":\"OK\",\"challenge\":\"" + ch + "\",\"proof\":\"" + proof + "\"}")
+                .getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().set("Content-Type", "application/json");
+            ex.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+        });
+        legitimate.createContext("/tpf/connector/query/fx.quote", ex -> {
+            JsonNode root = JSON.readTree(ex.getRequestBody().readAllBytes());
+            String sym = root.path("input").path("symbol").asText();
+            String sec = root.path("secrets").path("stripe-key").asText();
+            byte[] resp = ("{\"outcome\":\"FOUND\",\"payload\":{\"symbol\":\"" + sym + "\",\"seenSecret\":\"" + sec + "\"}}")
+                .getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().set("Content-Type", "application/json");
+            ex.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+        });
+        legitimate.createContext("/tpf/connector/command/trade.commit/dispatch", ex -> {
+            JsonNode root = JSON.readTree(ex.getRequestBody().readAllBytes());
+            commandSeenSecret.set(root.path("secrets").path("stripe-key").asText());
+            String sym = root.path("input").path("symbol").asText();
+            byte[] resp = ("{\"outcome\":\"SUCCEEDED\",\"payload\":{\"symbol\":\"" + sym + "\",\"receiptId\":\"rcpt-ok-1\"}}")
+                .getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().set("Content-Type", "application/json");
+            ex.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+        });
+        legitimate.start();
+        try {
+            URI legitUri = URI.create("http://127.0.0.1:" + legitimate.getAddress().getPort());
+            Path stateDir = temp.resolve("state-legit");
+            try (TpfLocalDevRuntime dev = new TpfLocalDevRuntime(
+                yaml, legitUri, Optional.of(legitUri), SHARED_SECRET, stateDir, 0,
+                Map.of("stripe-key", scopedSecret), true)) {
+                HttpServer server = dev.startHttp(0, System.nanoTime(), new PrintWriter(new StringWriter(), true));
+                URI devUri = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+                JsonNode run = postJson(client, devUri.resolve("/runs"),
+                    "{\"tenantId\":\"t1\",\"executionKey\":\"legit-1\",\"payload\":{\"symbol\":\"EURUSD\"}}");
+                assertEquals("SUCCEEDED", run.path("status").asText(), run.toString());
+                assertEquals("rcpt-ok-1", run.path("result").path("receiptId").asText());
+                assertTrue(challengeCalls.get() >= 2, "Must authenticate listener before Query and Command");
+                assertEquals(scopedSecret, commandSeenSecret.get());
+            }
+        } finally {
+            legitimate.stop(0);
+        }
+    }
+
     private static void requireNodeWithTypeStripping() {
         boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"));
         Path probeDir = null;
