@@ -760,16 +760,81 @@ class PolyglotCliEndToEndTest {
                       "payload": {
                         "batchSeq": 9007199254740993,
                         "entries": [
-                          {"entrySeq": 9007199254740993, "amount": 100.50},
-                          {"entrySeq": 9007199254740994, "amount": 200.75}
+                          {"entrySeq": 9007199254740993, "amount": 100.500000000000000001},
+                          {"entrySeq": 9007199254740994, "amount": 200.750000000000000002}
                         ]
                       }
                     }""");
                 assertEquals("SUCCEEDED", run.path("status").asText(), run.toString());
                 assertEquals(2, run.path("result").path("count").asInt());
                 assertEquals("9007199254740995", run.path("result").path("maxSeq").asText());
-                assertEquals("303.75", run.path("result").path("totalAmount").asText());
+                assertEquals("303.750000000000000003", run.path("result").path("totalAmount").asText());
             }
+
+            // Focused full-duplex transport proof against the same live generated TS host:
+            // withhold entry #2 and request completion until output #1 arrives from /duplex.
+            String contractJson = Files.readString(tsOut.resolve("META-INF/pipeline/pipeline-contract.json"));
+            JsonNode contractTree = JSON.readTree(contractJson);
+            String catalogFp = contractTree.path("canonicalCatalogFingerprint").asText();
+            Map<String, Map<String, Object>> typesMap = JSON.convertValue(
+                contractTree.path("canonicalTypes"),
+                new com.fasterxml.jackson.core.type.TypeReference<>() { });
+            org.pipelineframework.type.CanonicalTypeCatalogue catalogue =
+                org.pipelineframework.type.CanonicalTypeCatalogue.fromCanonicalTypes(typesMap);
+            String inFp = contractTree.path("canonicalTypes").path("LedgerEntry").path("definitionFingerprint").asText();
+            String outFp = contractTree.path("canonicalTypes").path("EnrichedEntry").path("definitionFingerprint").asText();
+            org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep duplexStep =
+                new org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep(
+                    new org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep.Spec(
+                        "enrich-stream", 1, "LedgerEntry", inFp, "EnrichedEntry", outFp,
+                        catalogFp, catalogue, hostUri, SHARED_SECRET,
+                        Duration.ofSeconds(10), Duration.ofSeconds(10), Optional.of("cmd-enrich-stream"),
+                        org.pipelineframework.orchestrator.ForeignDispatchIntentStore.noop(), 4 * 1024 * 1024),
+                    true);
+
+            org.pipelineframework.orchestrator.TypedDurablePayload entry1 =
+                new org.pipelineframework.orchestrator.TypedDurablePayload(
+                    "LedgerEntry", inFp, catalogFp,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING_VERSION,
+                    "{\"entrySeq\":9007199254740993,\"amount\":100.500000000000000001}".getBytes(StandardCharsets.UTF_8));
+            org.pipelineframework.orchestrator.TypedDurablePayload entry2 =
+                new org.pipelineframework.orchestrator.TypedDurablePayload(
+                    "LedgerEntry", inFp, catalogFp,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING_VERSION,
+                    "{\"entrySeq\":9007199254740994,\"amount\":200.750000000000000002}".getBytes(StandardCharsets.UTF_8));
+
+            java.util.concurrent.CountDownLatch output1Arrived = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicBoolean output1BeforeInput2 = new java.util.concurrent.atomic.AtomicBoolean(false);
+            io.smallrye.mutiny.Multi<org.pipelineframework.orchestrator.TypedDurablePayload> gatedUpstream =
+                io.smallrye.mutiny.Multi.createFrom().emitter(emitter -> {
+                    emitter.emit(entry1);
+                    Thread.ofVirtual().start(() -> {
+                        try {
+                            boolean sawFirst = output1Arrived.await(5, TimeUnit.SECONDS);
+                            output1BeforeInput2.set(sawFirst);
+                            emitter.emit(entry2);
+                            emitter.complete();
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            emitter.fail(ie);
+                        }
+                    });
+                });
+
+            List<org.pipelineframework.orchestrator.TypedDurablePayload> streamedOut = duplexStep
+                .applyTransform(gatedUpstream)
+                .onItem().invoke(item -> output1Arrived.countDown())
+                .collect().asList()
+                .await().atMost(Duration.ofSeconds(10));
+            assertTrue(output1BeforeInput2.get(),
+                "Full-duplex MANY_TO_MANY must deliver output #1 before input #2 and request completion are sent");
+            assertEquals(2, streamedOut.size());
+            JsonNode out1 = JSON.readTree(streamedOut.get(0).payload());
+            JsonNode out2 = JSON.readTree(streamedOut.get(1).payload());
+            assertEquals("101.750000000000000001", out1.path("adjustedAmount").asText());
+            assertEquals("202.000000000000000002", out2.path("adjustedAmount").asText());
         } finally {
             nodeProc.destroy();
             if (!nodeProc.waitFor(5, TimeUnit.SECONDS)) {
