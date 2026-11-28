@@ -66,6 +66,8 @@ jobs:
         run: ./mvnw -B -pl tpf-cli package native:compile-no-fork -DskipTests --no-transfer-progress -Dmaven.repo.local="$PWD/.m2/repository"
       - name: Conformance without Java or Docker
         run: python3 scripts/test-container-workflow.py --executable tpf-cli/target/tpf --report target/native-conformance.json
+      - name: Zero-JDK polyglot SIGKILL crash-recovery proof
+        run: python3 scripts/test-polyglot-native-sigkill.py --executable tpf-cli/target/tpf
       - name: Package the tested executable
         run: python3 scripts/package-native.py --executable tpf-cli/target/tpf --platform '${{ matrix.platform }}' --revision '${{ needs.identity.outputs.revision }}' --report target/native-conformance.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

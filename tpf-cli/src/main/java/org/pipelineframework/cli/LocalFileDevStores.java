@@ -818,11 +818,28 @@ public final class LocalFileDevStores implements AutoCloseable {
 
         @Override
         public Uni<Optional<AwaitUnitRecord>> markCompleted(String tenantId, String unitId, long nowEpochMs) {
-            return update(tenantId, unitId, u -> new AwaitUnitRecord(
-                u.tenantId(), u.unitId(), u.executionId(), u.stepId(), u.stepIndex(), u.cardinality(),
-                u.version() + 1L, AwaitUnitStatus.COMPLETED, u.primaryInteractionId(), u.expectedItemCount(),
-                u.completedItemCount() + 1, u.completedItemKeys(), u.dispatchComplete(),
-                u.createdAtEpochMs(), nowEpochMs, u.ttlEpochS()));
+            return Uni.createFrom().item(() -> {
+                synchronized (lock) {
+                    String key = tenantId + "\0" + unitId;
+                    AwaitUnitRecord u = units.get(key);
+                    if (u == null) {
+                        return Optional.empty();
+                    }
+                    if (u.status() == AwaitUnitStatus.COMPLETED) {
+                        return Optional.of(u);
+                    }
+                    int nextCount = u.expectedItemCount() == null
+                        ? u.completedItemCount() + 1
+                        : Math.min(u.expectedItemCount(), u.completedItemCount() + 1);
+                    AwaitUnitRecord next = new AwaitUnitRecord(
+                        u.tenantId(), u.unitId(), u.executionId(), u.stepId(), u.stepIndex(), u.cardinality(),
+                        u.version() + 1L, AwaitUnitStatus.COMPLETED, u.primaryInteractionId(), u.expectedItemCount(),
+                        nextCount, u.completedItemKeys(), u.dispatchComplete(),
+                        u.createdAtEpochMs(), nowEpochMs, u.ttlEpochS());
+                    commitUnitLocked(key, next);
+                    return Optional.of(next);
+                }
+            });
         }
 
         @Override

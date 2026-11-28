@@ -59,6 +59,7 @@ with tempfile.TemporaryDirectory(prefix='tpf install ') as directory:
         if subprocess.check_output([str(executable),'--version'],text=True).strip()!=metadata['conformance']['version']:
             raise SystemExit('Installed CLI version mismatch')
         subprocess.run([sys.executable,str(root/'scripts/test-container-workflow.py'),'--executable',str(executable)],check=True)
+        subprocess.run([sys.executable,str(root/'scripts/test-polyglot-native-sigkill.py'),'--executable',str(executable)],check=True)
         if args.homebrew: subprocess.run(['brew','test','tpf'],check=True)
     finally:
         if candidate_tap:
