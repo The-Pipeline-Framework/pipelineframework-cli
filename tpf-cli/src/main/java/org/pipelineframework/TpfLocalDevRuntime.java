@@ -94,6 +94,7 @@ import org.pipelineframework.connector.polyglot.PolyglotConnectorProvider;
 import org.pipelineframework.connector.polyglot.PolyglotConnectorSpec;
 import org.pipelineframework.invocation.PipelineInvocationRuntime;
 import org.pipelineframework.objectpublish.ObjectPublishCompletionService;
+import org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep;
 import org.pipelineframework.orchestrator.CanonicalFunctionHostManyToOneStep;
 import org.pipelineframework.orchestrator.CanonicalFunctionHostOneToManyStep;
 import org.pipelineframework.orchestrator.CanonicalFunctionHostStep;
@@ -703,6 +704,13 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
                             STEP_TIMEOUT, cmdId, stores.dispatchIntentStore,
                             4 * 1024 * 1024),
                         allowLoopbackHttp);
+                    case "MANY_TO_MANY" -> new CanonicalFunctionHostManyToManyStep(
+                        new CanonicalFunctionHostManyToManyStep.Spec(
+                            stepId, i, inputType, inputFp, outputType, outputFp,
+                            catalogFingerprint, catalogue, functionHostUri, sharedSecret,
+                            STEP_TIMEOUT, STEP_TIMEOUT, cmdId, stores.dispatchIntentStore,
+                            4 * 1024 * 1024),
+                        allowLoopbackHttp);
                     default -> throw new IllegalArgumentException(
                         "Cardinality '" + card + "' is not supported by tpf dev (ADR-0092)");
                 };
@@ -1057,6 +1065,7 @@ public final class TpfLocalDevRuntime implements AutoCloseable {
             case "ONE_TO_ONE", "UNARY" -> "ONE_TO_ONE";
             case "ONE_TO_MANY", "EXPANSION" -> "ONE_TO_MANY";
             case "MANY_TO_ONE", "REDUCTION" -> "MANY_TO_ONE";
+            case "MANY_TO_MANY", "BIDIRECTIONAL", "DUPLEX" -> "MANY_TO_MANY";
             default -> raw.trim().toUpperCase(Locale.ROOT);
         };
     }
