@@ -613,6 +613,236 @@ class PolyglotCliEndToEndTest {
         }
     }
 
+    @Test
+    void localDevExecutesFullDuplexManyToManyStreamingPipelineAgainstGeneratedTsHost(@TempDir Path temp) throws Exception {
+        requireNodeWithTypeStripping();
+
+        Path yaml = temp.resolve("many-to-many-pipeline.yaml");
+        Files.writeString(yaml, """
+            version: 3
+            appName: DuplexLedgerFlow
+            basePackage: com.example.duplex
+            transport: LOCAL
+            platform: COMPUTE
+            types:
+              LedgerEntry:
+                fields:
+                  - name: entrySeq
+                    type: int64
+                  - name: amount
+                    type: decimal
+              LedgerBatch:
+                fields:
+                  - name: batchSeq
+                    type: int64
+                  - name: entries
+                    repeated: LedgerEntry
+              EnrichedEntry:
+                fields:
+                  - name: entrySeq
+                    type: int64
+                  - name: adjustedAmount
+                    type: decimal
+              DuplexSummary:
+                fields:
+                  - name: count
+                    type: int32
+                  - name: maxSeq
+                    type: int64
+                  - name: totalAmount
+                    type: decimal
+            steps:
+              - name: Split Batch
+                cardinality: ONE_TO_MANY
+                input: LedgerBatch
+                output: LedgerEntry
+              - name: Enrich Stream
+                cardinality: MANY_TO_MANY
+                input: LedgerEntry
+                output: EnrichedEntry
+              - name: Summarize Stream
+                cardinality: MANY_TO_ONE
+                input: EnrichedEntry
+                output: DuplexSummary
+            """);
+
+        Path tsOut = temp.resolve("gen-ts-duplex");
+        Path pyOut = temp.resolve("gen-py-duplex");
+        Path dataDir = temp.resolve("dev-duplex-state");
+
+        assertEquals(0, new CommandLine(new TpfCli())
+            .execute("generate", "--pipeline", yaml.toString(), "--lang", "ts", "--out", tsOut.toString()));
+        assertEquals(0, new CommandLine(new TpfCli())
+            .execute("generate", "--pipeline", yaml.toString(), "--lang", "py", "--out", pyOut.toString()));
+        assertTrue(Files.readString(tsOut.resolve("host.ts")).contains("/duplex"));
+        assertTrue(Files.readString(pyOut.resolve("host.py")).contains("/duplex"));
+
+        Path runner = tsOut.resolve("app.ts");
+        Files.writeString(runner, """
+            import { startAppHost } from './host.ts';
+            import type { FunctionHandlers, EnrichedEntry, LedgerEntry } from './types.ts';
+
+            function addDecimals(a: string, b: string): string {
+              const parse = (s: string) => {
+                const neg = s.startsWith('-');
+                const body = neg ? s.slice(1) : s;
+                const [intPart, fracPart = ''] = body.split('.');
+                return { neg, intPart, fracPart };
+              };
+              const pa = parse(a);
+              const pb = parse(b);
+              const scale = Math.max(pa.fracPart.length, pb.fracPart.length);
+              const toScaled = (p: ReturnType<typeof parse>) => {
+                const v = BigInt(p.intPart + p.fracPart.padEnd(scale, '0'));
+                return p.neg ? -v : v;
+              };
+              const sum = toScaled(pa) + toScaled(pb);
+              const neg = sum < 0n;
+              const digits = (neg ? -sum : sum).toString().padStart(scale + 1, '0');
+              if (scale === 0) return (neg ? '-' : '') + digits;
+              const intPart = digits.slice(0, digits.length - scale);
+              const fracPart = digits.slice(digits.length - scale).replace(/0+$/, '');
+              return (neg ? '-' : '') + (fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart);
+            }
+
+            const handlers: FunctionHandlers = {
+              async *splitBatch(input) {
+                for (const entry of input.entries) {
+                  yield { entrySeq: entry.entrySeq, amount: entry.amount };
+                }
+              },
+              async *enrichStream(items: AsyncIterable<LedgerEntry>) {
+                for await (const item of items) {
+                  yield {
+                    entrySeq: item.entrySeq + 1n,
+                    adjustedAmount: addDecimals(item.amount, '1.25'),
+                  };
+                }
+              },
+              async summarizeStream(items: AsyncIterable<EnrichedEntry>) {
+                let count = 0;
+                let maxSeq = 0n;
+                let total = '0';
+                for await (const item of items) {
+                  count += 1;
+                  if (item.entrySeq > maxSeq) maxSeq = item.entrySeq;
+                  total = addDecimals(total, item.adjustedAmount);
+                }
+                return { count, maxSeq, totalAmount: total };
+              },
+            };
+
+            const running = await startAppHost(handlers, { sharedSecret: process.env.TPF_SECRET! });
+            console.log('READY ' + running.baseUrl);
+            process.on('SIGTERM', async () => { await running.close(); process.exit(0); });
+            """);
+
+        ProcessBuilder pb = new ProcessBuilder(List.of("node", runner.toString()))
+            .directory(tsOut.toFile())
+            .redirectErrorStream(true);
+        pb.environment().put("TPF_SECRET", SHARED_SECRET);
+        Process nodeProc = pb.start();
+        try {
+            URI hostUri = URI.create(awaitReadyLine(nodeProc, Duration.ofSeconds(10)));
+            HttpClient client = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+            try (TpfLocalDevRuntime dev = new TpfLocalDevRuntime(
+                yaml, hostUri, Optional.of(hostUri), SHARED_SECRET, dataDir, 1, Map.of(), true)) {
+                HttpServer server = dev.startHttp(0, System.nanoTime(), new PrintWriter(new StringWriter(), true));
+                URI devUri = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+
+                JsonNode run = postJson(client, devUri.resolve("/runs"), """
+                    {
+                      "tenantId": "t1",
+                      "executionKey": "duplex-1",
+                      "payload": {
+                        "batchSeq": 9007199254740993,
+                        "entries": [
+                          {"entrySeq": 9007199254740993, "amount": 100.500000000000000001},
+                          {"entrySeq": 9007199254740994, "amount": 200.750000000000000002}
+                        ]
+                      }
+                    }""");
+                assertEquals("SUCCEEDED", run.path("status").asText(), run.toString());
+                assertEquals(2, run.path("result").path("count").asInt());
+                assertEquals("9007199254740995", run.path("result").path("maxSeq").asText());
+                assertEquals("303.750000000000000003", run.path("result").path("totalAmount").asText());
+            }
+
+            // Focused full-duplex transport proof against the same live generated TS host:
+            // withhold entry #2 and request completion until output #1 arrives from /duplex.
+            String contractJson = Files.readString(tsOut.resolve("META-INF/pipeline/pipeline-contract.json"));
+            JsonNode contractTree = JSON.readTree(contractJson);
+            String catalogFp = contractTree.path("canonicalCatalogFingerprint").asText();
+            Map<String, Map<String, Object>> typesMap = JSON.convertValue(
+                contractTree.path("canonicalTypes"),
+                new com.fasterxml.jackson.core.type.TypeReference<>() { });
+            org.pipelineframework.type.CanonicalTypeCatalogue catalogue =
+                org.pipelineframework.type.CanonicalTypeCatalogue.fromCanonicalTypes(typesMap);
+            String inFp = contractTree.path("canonicalTypes").path("LedgerEntry").path("definitionFingerprint").asText();
+            String outFp = contractTree.path("canonicalTypes").path("EnrichedEntry").path("definitionFingerprint").asText();
+            org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep duplexStep =
+                new org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep(
+                    new org.pipelineframework.orchestrator.CanonicalFunctionHostManyToManyStep.Spec(
+                        "enrich-stream", 1, "LedgerEntry", inFp, "EnrichedEntry", outFp,
+                        catalogFp, catalogue, hostUri, SHARED_SECRET,
+                        Duration.ofSeconds(10), Duration.ofSeconds(10), Optional.of("cmd-enrich-stream"),
+                        org.pipelineframework.orchestrator.ForeignDispatchIntentStore.noop(), 4 * 1024 * 1024),
+                    true);
+
+            org.pipelineframework.orchestrator.TypedDurablePayload entry1 =
+                new org.pipelineframework.orchestrator.TypedDurablePayload(
+                    "LedgerEntry", inFp, catalogFp,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING_VERSION,
+                    "{\"entrySeq\":9007199254740993,\"amount\":100.500000000000000001}".getBytes(StandardCharsets.UTF_8));
+            org.pipelineframework.orchestrator.TypedDurablePayload entry2 =
+                new org.pipelineframework.orchestrator.TypedDurablePayload(
+                    "LedgerEntry", inFp, catalogFp,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING,
+                    org.pipelineframework.orchestrator.JsonDurablePayloadCodec.ENCODING_VERSION,
+                    "{\"entrySeq\":9007199254740994,\"amount\":200.750000000000000002}".getBytes(StandardCharsets.UTF_8));
+
+            java.util.concurrent.CountDownLatch output1Arrived = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicBoolean output1BeforeInput2 = new java.util.concurrent.atomic.AtomicBoolean(false);
+            io.smallrye.mutiny.Multi<org.pipelineframework.orchestrator.TypedDurablePayload> gatedUpstream =
+                io.smallrye.mutiny.Multi.createFrom().emitter(emitter -> {
+                    emitter.emit(entry1);
+                    Thread.ofVirtual().start(() -> {
+                        try {
+                            boolean sawFirst = output1Arrived.await(5, TimeUnit.SECONDS);
+                            output1BeforeInput2.set(sawFirst);
+                            emitter.emit(entry2);
+                            emitter.complete();
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            emitter.fail(ie);
+                        }
+                    });
+                });
+
+            List<org.pipelineframework.orchestrator.TypedDurablePayload> streamedOut = duplexStep
+                .applyTransform(gatedUpstream)
+                .onItem().invoke(item -> output1Arrived.countDown())
+                .collect().asList()
+                .await().atMost(Duration.ofSeconds(10));
+            assertTrue(output1BeforeInput2.get(),
+                "Full-duplex MANY_TO_MANY must deliver output #1 before input #2 and request completion are sent");
+            assertEquals(2, streamedOut.size());
+            JsonNode out1 = JSON.readTree(streamedOut.get(0).payload());
+            JsonNode out2 = JSON.readTree(streamedOut.get(1).payload());
+            assertEquals("101.750000000000000001", out1.path("adjustedAmount").asText());
+            assertEquals("202.000000000000000002", out2.path("adjustedAmount").asText());
+        } finally {
+            nodeProc.destroy();
+            if (!nodeProc.waitFor(5, TimeUnit.SECONDS)) {
+                nodeProc.destroyForcibly();
+            }
+        }
+    }
+
     private static void requireNodeWithTypeStripping() {
         boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"));
         Path probeDir = null;
